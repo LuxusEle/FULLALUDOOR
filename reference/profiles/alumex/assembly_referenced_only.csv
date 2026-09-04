@@ -1,0 +1,6 @@
+﻿section_no,pages,status
+CA-1115,"30,40",Referenced in 80mm sliding assembly sections; no standalone dimensioned profile in this book.
+CA-1116,41,Referenced in assembly drawing; no standalone dimensioned profile in this book.
+DG-03,"29,30,39,40",Referenced as louver/glazing component in assembly drawings; no standalone dimensioned profile in this book.
+DG-04,36,Referenced as louver/glazing component in assembly drawing; no standalone dimensioned profile in this book.
+DG-103,"29,30,36,39,40",Referenced as louver/glazing component in assembly drawings; no standalone dimensioned profile in this book.
