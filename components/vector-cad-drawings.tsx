@@ -39,7 +39,7 @@ export default function VectorCadDrawings({ opening, theme = 'dark' }: VectorCad
   const vbHeight = h + padding * 2;
 
   const strokeMain = theme === 'light' ? '#0f172a' : '#f8fafc';
-  const strokeDim = theme === 'light' ? '#2563eb' : '#38bdf8';
+  const strokeDim = theme === 'light' ? '#b45309' : '#38bdf8';
   const fillAlu = theme === 'light' ? '#e2e8f0' : '#1e293b';
   const fillGlass = theme === 'light' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(56, 189, 248, 0.1)';
   const strokeGlass = '#0284c7';
@@ -185,9 +185,9 @@ export default function VectorCadDrawings({ opening, theme = 'dark' }: VectorCad
                 <circle cx="-30" cy="22" r="14" fill="#dc2626" /><text x="-30" y="27" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">A</text>
                 <circle cx={w + 30} cy="22" r="14" fill="#dc2626" /><text x={w + 30} y="27" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">A</text>
 
-                <line x1={w / 2} y1="-30" x2={w / 2} y2={h + 30} stroke="#2563eb" strokeWidth="2" strokeDasharray="10,5,2,5" />
-                <circle cx={w / 2} cy="-30" r="14" fill="#2563eb" /><text x={w / 2} y="-25" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">B</text>
-                <circle cx={w / 2} cy={h + 30} r="14" fill="#2563eb" /><text x={w / 2} y={h + 35} fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">B</text>
+                <line x1={w / 2} y1="-30" x2={w / 2} y2={h + 30} stroke="#b45309" strokeWidth="2" strokeDasharray="10,5,2,5" />
+                <circle cx={w / 2} cy="-30" r="14" fill="#b45309" /><text x={w / 2} y="-25" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">B</text>
+                <circle cx={w / 2} cy={h + 30} r="14" fill="#b45309" /><text x={w / 2} y={h + 35} fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">B</text>
 
                 <circle cx={d.frameFace} cy={d.frameFace} r="45" fill="none" stroke="#d97706" strokeWidth="2.5" strokeDasharray="6,4" />
                 <text x={d.frameFace + 35} y={d.frameFace - 10} fill="#d97706" fontSize="16" fontWeight="800">DETAIL D</text>
@@ -540,10 +540,10 @@ export default function VectorCadDrawings({ opening, theme = 'dark' }: VectorCad
                   <text x="122" y="108" fontSize="9" fontWeight="bold" fill="#475569">INTERNAL ANGLE CLEAT</text>
 
                   {/* Machine Screws into Stile Spline */}
-                  <line x1="50" y1="78" x2="80" y2="78" stroke="#2563eb" strokeWidth="2" />
-                  <circle cx="50" cy="78" r="3" fill="#2563eb" />
-                  <line x1="50" y1="98" x2="80" y2="98" stroke="#2563eb" strokeWidth="2" />
-                  <circle cx="50" cy="98" r="3" fill="#2563eb" />
+                  <line x1="50" y1="78" x2="80" y2="78" stroke="#b45309" strokeWidth="2" />
+                  <circle cx="50" cy="78" r="3" fill="#b45309" />
+                  <line x1="50" y1="98" x2="80" y2="98" stroke="#b45309" strokeWidth="2" />
+                  <circle cx="50" cy="98" r="3" fill="#b45309" />
 
                   {/* Continuous M6 High-Tensile Threaded Tie-Rod passing through rail & stile */}
                   <line x1="20" y1="125" x2="255" y2="125" stroke="#ea580c" strokeWidth="4" />

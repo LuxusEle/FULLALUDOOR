@@ -2,25 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box,
   Check,
   Download,
   Hammer,
   Hexagon,
-  Layers3,
-  MousePointer2,
-  Rotate3D,
-  Ruler,
-  Save,
-  ShieldCheck,
   Sun,
   Moon,
+  Save,
   BoxSelect,
   FileSpreadsheet,
   Compass,
   DollarSign,
   Scissors,
   FileCheck2,
+  Home,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import DoorViewer from './door-viewer';
 import ProjectSchedule from '../components/project-schedule';
@@ -28,6 +25,8 @@ import VectorCadDrawings from '../components/vector-cad-drawings';
 import NestingView from '../components/nesting-view';
 import CommercialQuoteView from '../components/commercial-quote';
 import FabricationAuditReport from '../components/fabrication-audit-report';
+import CuttingPlanePrintDocument from '../components/cutting-plane-print-document';
+import { buildManufacturingDossier } from '../lib/manufacturing-dossier';
 import type { DoorConfig } from '../lib/door-model';
 import { defaultDoorConfig, deriveDoor, doorConfigSchema, fabricationChecks } from '../lib/door-model';
 import type { DerivedOpening, OpeningItem, ProjectMetadata, TypologyId } from '../lib/types';
@@ -96,7 +95,7 @@ const INITIAL_OPENINGS: OpeningItem[] = [
 
 export default function DoorDesigner() {
   const [activeTab, setActiveTab] = useState<'studio' | 'schedule' | 'cad' | 'nesting' | 'quote' | 'audit'>('studio');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [project, setProject] = useState<ProjectMetadata>(INITIAL_PROJECT);
   const [openings, setOpenings] = useState<OpeningItem[]>(INITIAL_OPENINGS);
   const [activeOpeningId, setActiveOpeningId] = useState<string>(INITIAL_OPENINGS[0].id);
@@ -118,11 +117,14 @@ export default function DoorDesigner() {
   });
 
   const [view, setView] = useState<'assembly' | 'exploded' | 'section'>('assembly');
+  const [showConfig, setShowConfig] = useState(true);
+  const [showFab, setShowFab] = useState(true);
   const [dimensionDraft, setDimensionDraft] = useState({
     width: String(activeOpening.width),
     height: String(activeOpening.height),
   });
   const [makeStatus, setMakeStatus] = useState('');
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const handleSelectOpening = (id: string) => {
     setActiveOpeningId(id);
@@ -160,6 +162,11 @@ export default function DoorDesigner() {
   const projectNesting = useMemo(() => {
     return nestProjectCuts(allProjectCuts);
   }, [allProjectCuts]);
+
+  const manufacturingDossier = useMemo(
+    () => buildManufacturingDossier(project, derivedProjectOpenings, projectNesting),
+    [project, derivedProjectOpenings, projectNesting]
+  );
 
   const summaryRef = useRef({ configuration: config, cutList: derived.cutList, checks });
   useEffect(() => {
@@ -221,11 +228,33 @@ export default function DoorDesigner() {
     URL.revokeObjectURL(url);
   };
 
-  const toggleTheme = () => {
-    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+  const exportCuttingPlanePdf = () => setIsExportingPdf(true);
+
+  useEffect(() => {
+    if (!isExportingPdf) return;
+    const timer = window.setTimeout(() => window.print(), 120);
+    const finishExport = () => setIsExportingPdf(false);
+    window.addEventListener('afterprint', finishExport);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('afterprint', finishExport);
+    };
+  }, [isExportingPdf]);
+
+  const setThemeTo = (nextTheme: 'dark' | 'light') => {
     setTheme(nextTheme);
     document.documentElement.setAttribute('data-theme', nextTheme);
   };
+
+  const NAV_ITEMS: { key: string; icon: typeof Home; label: string; go: 'studio' | 'schedule' | 'cad' | 'nesting' | 'quote' | 'audit' }[] = [
+    { key: 'dashboard', icon: Home, label: 'Dashboard', go: 'studio' },
+    { key: 'studio', icon: BoxSelect, label: '3D Studio', go: 'studio' },
+    { key: 'schedule', icon: FileSpreadsheet, label: `Project Schedule (${openings.length})`, go: 'schedule' },
+    { key: 'cad', icon: Compass, label: '2D Vector CAD', go: 'cad' },
+    { key: 'nesting', icon: Scissors, label: `1D Nesting & Labels (${projectNesting.totalBarsToPull} bars)`, go: 'nesting' },
+    { key: 'quote', icon: DollarSign, label: 'Commercial Quote & BOM', go: 'quote' },
+    { key: 'audit', icon: FileCheck2, label: 'Fabricator Audit (PDF)', go: 'audit' },
+  ];
 
   // Register AI Tools for document.modelContext
   useEffect(() => {
@@ -274,73 +303,86 @@ export default function DoorDesigner() {
   }, [config, derived, projectNesting]);
 
   return (
-    <main className="app-shell" data-theme={theme}>
+    <main className={`app-shell ${isExportingPdf ? 'printing-cutting-plane' : ''}`} data-theme={theme}>
       {/* Top Application Bar */}
       <header className="topbar">
-        <div className="brand">
-          <span className="brandmark">
-            <Hexagon size={17} />
-          </span>
-          FullAluDoor Pro
+        <div className="brand" style={{ flexShrink: 0 }}>
+          <span className="brandmark"><Hexagon size={17} strokeWidth={2.2} /></span>
+          <span className="brand-name" style={{ fontWeight: 800, fontSize: 15, letterSpacing: '-0.02em', color: '#ffffff', whiteSpace: 'nowrap' }}>FullAluDoor Pro</span>
           <span className="brand-sub">CAD/CAM</span>
         </div>
 
         {/* Workspace Mode Navigation Tabs */}
-        <nav className="tab-strip">
-          <button
-            className={`tab-item ${activeTab === 'studio' ? 'active' : ''}`}
-            onClick={() => setActiveTab('studio')}
-            title="Interactive 3D Visualizer & Studio"
-          >
-            <BoxSelect size={14} /> 3D Studio
-          </button>
-          <button
-            className={`tab-item ${activeTab === 'schedule' ? 'active' : ''}`}
-            onClick={() => setActiveTab('schedule')}
-            title="Multi-Opening Project Schedule Table"
-          >
-            <FileSpreadsheet size={14} /> Project Schedule ({openings.length})
-          </button>
-          <button
-            className={`tab-item ${activeTab === 'cad' ? 'active' : ''}`}
-            onClick={() => setActiveTab('cad')}
-            title="Architectural Vector CAD Construction Shop Drawings"
-          >
-            <Compass size={14} /> 2D Vector CAD
-          </button>
-          <button
-            className={`tab-item ${activeTab === 'nesting' ? 'active' : ''}`}
-            onClick={() => setActiveTab('nesting')}
-            title="1D Linear Bar Nesting & Cutting Mark Labels"
-          >
-            <Scissors size={14} /> 1D Nesting & Labels ({projectNesting.totalBarsToPull} bars)
-          </button>
-          <button
-            className={`tab-item ${activeTab === 'quote' ? 'active' : ''}`}
-            onClick={() => setActiveTab('quote')}
-            title="Commercial Client Quote & Master BOM"
-          >
-            <DollarSign size={14} /> Commercial Quote & BOM
-          </button>
-          <button
-            className={`tab-item ${activeTab === 'audit' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audit')}
-            title="Expert Fabricator Audit Report & Construction Dossier (PDF)"
-          >
-            <FileCheck2 size={14} /> Fabricator Audit (PDF)
-          </button>
+        <nav className="tab-strip" style={{ flex: 1, minWidth: 0 }}>
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.key === 'dashboard' ? false : activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                className={`tab-item ${isActive ? 'active' : ''}`}
+                onClick={() => setActiveTab(item.go)}
+                title={item.label}
+                style={{ flexShrink: 0 }}
+              >
+                <Icon size={15} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         {/* Global Action Tools */}
-        <div className="top-actions">
-          <button className="theme-btn" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}>
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+        <div className="top-actions" style={{ flexShrink: 0, paddingLeft: 12 }}>
+          <div className="theme-seg" style={{ display: 'flex', background: '#1f242b', border: '1px solid #333c45', borderRadius: 9, padding: 3, gap: 2 }}>
+            <button
+              onClick={() => setThemeTo('light')}
+              aria-pressed={theme === 'light'}
+              title="White / Light mode"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 11px',
+                borderRadius: 7,
+                border: 'none',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                background: theme === 'light' ? '#ffffff' : 'transparent',
+                color: theme === 'light' ? '#0f172a' : '#9aa5b1',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Sun size={14} /> <span className="seg-txt">Light</span>
+            </button>
+            <button
+              onClick={() => setThemeTo('dark')}
+              aria-pressed={theme === 'dark'}
+              title="Dark mode"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 11px',
+                borderRadius: 7,
+                border: 'none',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                background: theme === 'dark' ? '#ffffff' : 'transparent',
+                color: theme === 'dark' ? '#0f172a' : '#9aa5b1',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Moon size={14} /> <span className="seg-txt">Dark</span>
+            </button>
+          </div>
+          <button className="btn csv-hide" onClick={exportCsv} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+            <Download size={14} /> <span className="btn-txt">Export CSV</span>
           </button>
-          <button className="btn" onClick={exportCsv} title="Export Current Cut List as CSV">
-            <Download size={14} /> Export CSV
-          </button>
-          <button className="btn btn-primary" onClick={() => window.print()} title="Print or Save Full Project PDF">
-            <Save size={14} /> Export PDF
+          <button className="btn btn-primary" onClick={exportCuttingPlanePdf} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+            <Save size={14} /> <span className="btn-txt">Export PDF</span>
           </button>
         </div>
       </header>
@@ -349,16 +391,35 @@ export default function DoorDesigner() {
       {/* 1. 3D STUDIO TAB                                                          */}
       {/* ========================================================================= */}
       {activeTab === 'studio' && (
-        <div className="workspace">
+        <div className={`workspace ${showConfig ? '' : 'cfg-off'} ${showFab ? '' : 'fab-off'}`}>
           {/* Left Parameter Controls Panel */}
+          {showConfig && (
           <aside className="panel panel-left">
             <div className="panel-head">
-              <div className="eyebrow">Active Unit: {activeOpening.tag}</div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="eyebrow">ACTIVE UNIT</span>
+                  <span className="mono" style={{ background: 'var(--accent-soft)', color: 'var(--accent-strong)', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '2px 10px', borderRadius: 20, fontWeight: 800, fontSize: 11 }}>
+                    {activeOpening.tag}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowConfig(false)}
+                  title="Hide configuration panel"
+                  aria-label="Hide configuration panel"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 2, display: 'grid', placeItems: 'center' }}
+                >
+                  <ChevronsLeft size={16} />
+                </button>
+              </div>
               <h1 className="panel-title">{activeOpening.name}</h1>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, background: 'var(--green-soft)', color: 'var(--green)', padding: '4px 11px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+                <Check size={13} strokeWidth={3} /> Ready to Fabricate
+              </div>
             </div>
 
             <section className="section">
-              <h2 className="section-title">Overall Opening Frame</h2>
+              <h2 className="section-title">OVERALL OPENING FRAME</h2>
               <div className="field-grid">
                 <div className="field">
                   <label htmlFor="width">Width</label>
@@ -403,16 +464,24 @@ export default function DoorDesigner() {
                   </div>
                 </div>
               </div>
-              <button className="make-door" onClick={makeDoor}>
-                <Hammer size={15} /> Update 3D Geometry
-              </button>
-              <div className={`make-status ${makeStatus.startsWith('Built') ? 'ok' : ''}`} aria-live="polite">
-                {makeStatus || 'Edit dimensions, then build the new geometry.'}
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'var(--accent-soft)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: 10, padding: '10px 13px', margin: '13px 0' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>Built Size</span>
+                <span className="mono" style={{ fontWeight: 800, color: 'var(--accent-strong)', fontSize: 13 }}>{config.width} × {config.height} mm</span>
               </div>
+
+              <button className="make-door" onClick={makeDoor}>
+                <Hammer size={16} /> Update 3D Geometry
+              </button>
+              {makeStatus && (
+                <div className={`make-status ${makeStatus.startsWith('Built') ? 'ok' : 'error'}`} style={{ marginTop: 8, textAlign: 'center' }}>
+                  {makeStatus}
+                </div>
+              )}
             </section>
 
             <section className="section">
-              <h2 className="section-title">System Typology</h2>
+              <h2 className="section-title">SYSTEM TYPOLOGY</h2>
               <select
                 className="select"
                 value={config.system || '100D-single'}
@@ -428,7 +497,7 @@ export default function DoorDesigner() {
             </section>
 
             <section className="section">
-              <h2 className="section-title">Handing & Finish</h2>
+              <h2 className="section-title">HANDING & FINISH</h2>
               <div className="field-grid">
                 <div className="field">
                   <label htmlFor="handing">Hinge / Slide</label>
@@ -450,7 +519,7 @@ export default function DoorDesigner() {
                     value={config.finish}
                     onChange={(e) => update('finish', e.target.value as DoorConfig['finish'])}
                   >
-                    <option value="natural">Natural Anodised</option>
+                    <option value="natural">Natural Anodized</option>
                     <option value="black">Jet Black</option>
                     <option value="bronze">Bronze</option>
                     <option value="white">Pure White</option>
@@ -460,8 +529,12 @@ export default function DoorDesigner() {
             </section>
 
             <section className="section">
-              <h2 className="section-title">Operation & Glass</h2>
-              <div className="range-row">
+              <h2 className="section-title">OPERATION & GLASS</h2>
+              <div className="field" style={{ marginBottom: 12 }}>
+                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+                  <span>Opening Angle</span>
+                  <span className="mono" style={{ fontWeight: 800, color: 'var(--accent-strong)' }}>{config.openingAngle}°</span>
+                </label>
                 <input
                   aria-label="Opening angle"
                   type="range"
@@ -469,160 +542,135 @@ export default function DoorDesigner() {
                   max="110"
                   value={config.openingAngle}
                   onChange={(e) => update('openingAngle', Number(e.target.value))}
+                  style={{ width: '100%', accentColor: 'var(--accent)' }}
                 />
-                <span className="range-value">{config.openingAngle}°</span>
               </div>
-              <div className="switch-row">
-                <span>Show Glass Panels</span>
+              <div className="switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Show Glass Panels</span>
                 <button
                   className={`switch ${config.showGlass ? 'on' : ''}`}
                   onClick={() => update('showGlass', !config.showGlass)}
                   aria-label="Toggle glass"
+                  style={{ background: config.showGlass ? 'var(--accent)' : 'var(--edge-strong)', width: 38, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.15s ease' }}
                 >
-                  <span />
+                  <span style={{ display: 'block', width: 18, height: 18, borderRadius: '50%', background: '#ffffff', position: 'absolute', top: 2, left: config.showGlass ? 18 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'all 0.15s ease' }} />
                 </button>
-              </div>
-            </section>
-
-            <section className="section">
-              <h2 className="section-title">Catalogue Profiles</h2>
-              <div className="check-list">
-                {[
-                  ['Outer frame', '100D-3105'],
-                  ['Hinge / lock stiles', '100D-101 / 103'],
-                  ['Top / mid / bottom', '100D-201 / 301 / 401'],
-                  ['Glazing bead', '100D-501'],
-                ].map(([a, b]) => (
-                  <div className="check" key={a}>
-                    <Box size={15} color="var(--muted)" />
-                    <span>{a}</span>
-                    <code>{b}</code>
-                  </div>
-                ))}
               </div>
             </section>
           </aside>
+          )}
 
-          {/* Center 3D Viewport with Pan, Zoom & X-Ray controls */}
-          <section className="viewport">
-            <div className="view-toolbar">
-              {(
-                [
-                  ['assembly', 'Assembly'],
-                  ['exploded', 'Exploded'],
-                  ['section', 'Joint Cutaway (X-Ray)'],
-                ] as const
-              ).map(([val, label]) => (
-                <button key={val} className={view === val ? 'active' : ''} onClick={() => setView(val)}>
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <DoorViewer config={config} view={view} theme={theme} />
-
-            <div className="canvas-help">
-              <span>
-                <MousePointer2 size={11} /> Drag orbit (or Pan button)
-              </span>
-              <span>
-                <Rotate3D size={11} /> Wheel zoom (accelerated)
-              </span>
-            </div>
-            <div className="datum">
-              {view === 'section'
-                ? config.system?.startsWith('70S')
-                  ? '70S SILL & ROLLER CARRIAGE CUTAWAY: 35% X-Ray / 70S-1101-1 / 70S-1501 / 70S-1914 Roller'
-                  : 'MID-RAIL JOINT CUTAWAY: 35% X-Ray / Angle Cleats / M6 Rod'
-                : `UNIT: ${activeOpening.tag} | SYSTEM: ${config.system}`}
-            </div>
-          </section>
+          {/* Center 3D Studio Viewport */}
+          <div className="viewport-shell">
+            <section className="viewport">
+              <DoorViewer config={config} view={view} setView={setView} theme="dark" />
+            </section>
+            {!showConfig && (
+              <button className="edge-reopen reopen-left" onClick={() => setShowConfig(true)} title="Show configuration panel" aria-label="Show configuration panel">
+                <ChevronsRight size={16} />
+              </button>
+            )}
+            {!showFab && (
+              <button className="edge-reopen reopen-right" onClick={() => setShowFab(true)} title="Show fabrication panel" aria-label="Show fabrication panel">
+                <ChevronsLeft size={16} />
+              </button>
+            )}
+          </div>
 
           {/* Right Fabrication & Checks Panel */}
+          {showFab && (
           <aside className="panel panel-right">
             <div className="panel-head">
-              <div className="eyebrow">Fabrication Status</div>
-              <h2 className="panel-title">Physical Joints & BOM</h2>
-              <div className="status-summary">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span className="eyebrow">FABRICATION STATUS</span>
+                <button
+                  onClick={() => setShowFab(false)}
+                  title="Hide fabrication panel"
+                  aria-label="Hide fabrication panel"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 2, display: 'grid', placeItems: 'center' }}
+                >
+                  <ChevronsRight size={16} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
+                <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'var(--green-soft)', color: 'var(--green)', display: 'grid', placeItems: 'center' }}>
+                  <Check size={26} strokeWidth={2.6} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--ink)' }}>All Good</h3>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Ready for production</span>
+                </div>
+              </div>
+              <div className="status-summary" style={{ gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
                 <div className="metric">
                   <strong style={{ color: 'var(--green)' }}>0</strong>
-                  <span>joint collisions</span>
+                  <span>Joint Collisions</span>
                 </div>
                 <div className="metric">
                   <strong>{(derived.clearWidth - derived.jointGap * 2).toFixed(1)}</strong>
-                  <span>rail cut mm</span>
+                  <span>Total Cut (mm)</span>
                 </div>
               </div>
             </div>
 
             <section className="section">
-              <h2 className="section-title">Geometry Invariants</h2>
+              <h2 className="section-title">GEOMETRY CHECKS</h2>
               <div className="check-list">
                 {checks.map((c) => (
-                  <div className="check" key={c.label}>
-                    <span className="check-icon">
-                      <Check size={12} />
-                    </span>
-                    <span>
-                      {c.label}
-                      <br />
-                      <small>{c.detail}</small>
-                    </span>
-                    <b className="pass">{c.value}</b>
+                  <div className="check" key={c.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--edge)' }}>
+                    <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', minWidth: 0 }}>
+                      <span className="check-icon" style={{ color: 'var(--green)', marginTop: 1, flexShrink: 0 }}>
+                        <Check size={15} strokeWidth={2.6} />
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--ink)' }}>{c.label}</div>
+                        <small style={{ color: 'var(--muted)', fontSize: 10, lineHeight: 1.35, display: 'block', marginTop: 1 }}>{c.detail}</small>
+                      </div>
+                    </div>
+                    <b className="pass" style={{ color: 'var(--green)', fontSize: 9.5, fontWeight: 800, letterSpacing: '0.03em', textAlign: 'right', flexShrink: 0, marginLeft: 8 }}>{c.value}</b>
                   </div>
                 ))}
               </div>
             </section>
 
             <section className="section">
-              <h2 className="section-title">Cut List for Unit {activeOpening.tag}</h2>
-              <table className="quote-table" style={{ fontSize: '11px' }}>
-                <thead>
-                  <tr>
-                    <th>Profile</th>
-                    <th>Qty</th>
-                    <th>Cut Length</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {derived.cutList
-                    .filter((x) => x.length > 0)
-                    .map((x) => (
-                      <tr key={x.id}>
-                        <td>
-                          <code>{x.profile}</code>
-                          <br />
-                          <small>{x.description}</small>
-                        </td>
-                        <td className="font-bold">{x.qty}</td>
-                        <td className="mono font-bold">{x.length.toFixed(0)} mm</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </section>
-
-            <section className="section">
-              <h2 className="section-title">Machine Path & CNC</h2>
-              <div className="check-list">
-                <div className="check">
-                  <Ruler size={15} />
-                  <span>Drill & Prep Coordinates</span>
-                  <b className="pass">MM</b>
-                </div>
-                <div className="check">
-                  <Layers3 size={15} />
-                  <span>DXF Solid Extrusions</span>
-                  <b className="pass">ACTIVE</b>
-                </div>
-                <div className="check">
-                  <ShieldCheck size={15} />
-                  <span>ISO Structural Integrity</span>
-                  <b className="pass">PASS</b>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <h2 className="section-title" style={{ margin: 0 }}>CUT LIST FOR UNIT {activeOpening.tag}</h2>
               </div>
+              <div style={{ border: '1px solid var(--edge)', borderRadius: 10, overflow: 'hidden' }}>
+                <table className="quote-table" style={{ fontSize: '11px', width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--panel)' }}>
+                      <th style={{ padding: '8px 10px', color: 'var(--muted)', textAlign: 'left', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Profile</th>
+                      <th style={{ padding: '8px 10px', color: 'var(--muted)', textAlign: 'center', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Qty</th>
+                      <th style={{ padding: '8px 10px', color: 'var(--muted)', textAlign: 'right', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Cut Length</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {derived.cutList
+                      .filter((x) => x.length > 0)
+                      .map((x, index) => (
+                        <tr key={`${x.id}-${index}`} style={{ borderTop: '1px solid var(--edge)', background: index % 2 ? 'var(--table-hover)' : 'transparent' }}>
+                          <td style={{ padding: '7px 10px' }}>
+                            <span className="mono" style={{ fontWeight: 800, color: 'var(--ink)', fontSize: 11 }}>{x.profile}</span>
+                            <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 1 }}>{x.description}</div>
+                          </td>
+                          <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 800, color: 'var(--ink)' }}>{x.qty}</td>
+                          <td className="mono" style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: 'var(--accent-strong)' }}>{x.length.toFixed(0)} mm</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                onClick={() => setActiveTab('schedule')}
+                style={{ marginTop: 14, background: 'transparent', border: 'none', color: 'var(--accent-strong)', fontWeight: 800, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0 }}
+              >
+                View Full Cut List <span aria-hidden>→</span>
+              </button>
             </section>
           </aside>
+          )}
         </div>
       )}
 
@@ -676,6 +724,10 @@ export default function DoorDesigner() {
           onSelectOpening={handleSelectOpening}
           theme={theme}
         />
+      )}
+
+      {isExportingPdf && (
+        <CuttingPlanePrintDocument dossier={manufacturingDossier} />
       )}
     </main>
   );

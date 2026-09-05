@@ -1,8 +1,6 @@
-'use client';
-
 import { useEffect, useRef, useState } from 'react';
 import earcut from 'earcut';
-import { Hand, Maximize2, Move, RotateCcw } from 'lucide-react';
+import { Hand, Maximize2, Move, RotateCcw, Home, ZoomIn, ZoomOut, Target, Ruler, ChevronRight } from 'lucide-react';
 import type { DoorConfig } from '../lib/door-model';
 import { deriveDoor, jointClearanceReport } from '../lib/door-model';
 import { loadDxfProfile } from '../lib/dxf-profile';
@@ -10,6 +8,7 @@ import { loadDxfProfile } from '../lib/dxf-profile';
 interface DoorViewerProps {
   config: DoorConfig;
   view: 'assembly' | 'exploded' | 'section';
+  setView?: (v: 'assembly' | 'exploded' | 'section') => void;
   theme?: 'dark' | 'light';
 }
 
@@ -18,13 +17,15 @@ interface ViewerController {
   setNav: (mode: 'orbit' | 'pan') => void;
   fit: (w: number, h: number) => void;
   reset: (h: number) => void;
+  preset: (id: 'front' | 'side' | 'top' | '3d' | 'section' | 'detail', w: number, h: number) => void;
   rebuild: (cfg: DoorConfig, v: 'assembly' | 'exploded' | 'section', th: 'dark' | 'light') => void;
   destroy: () => void;
 }
 
-export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerProps) {
+export default function DoorViewer({ config, view, setView, theme = 'dark' }: DoorViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [navMode, setNavMode] = useState<'orbit' | 'pan'>('orbit');
+  const [activePresetView, setActivePresetView] = useState<'front' | 'side' | 'top' | '3d' | 'section' | 'detail'>('front');
   const controllerRef = useRef<ViewerController | null>(null);
 
   // Initialize Babylon.js Scene and Controller
@@ -38,7 +39,7 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
 
       engine = new B.Engine(canvasRef.current, true, { preserveDrawingBuffer: true, stencil: true });
       const scene = new B.Scene(engine);
-      scene.clearColor = new B.Color4(0.035, 0.052, 0.063, 1);
+      scene.clearColor = new B.Color4(0.96, 0.97, 0.99, 1);
 
       const camera = new B.ArcRotateCamera('camera', -Math.PI / 2.25, Math.PI / 2.25, 3000, new B.Vector3(450, 1050, 0), scene);
       camera.lowerRadiusLimit = 150;
@@ -49,15 +50,15 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
       camera.attachControl(canvasRef.current, true);
 
       const ambientLight = new B.HemisphericLight('ambient', new B.Vector3(-0.3, 1, -0.5), scene);
-      ambientLight.intensity = 1.05;
+      ambientLight.intensity = 1.45;
 
       const key = new B.DirectionalLight('key', new B.Vector3(-0.4, -1, 0.6), scene);
-      key.intensity = 1.25;
+      key.intensity = 1.35;
 
       const ground = B.MeshBuilder.CreateGround('ground', { width: 4800, height: 3200 }, scene);
       ground.position.set(450, -35, 180);
       const groundMat = new B.StandardMaterial('ground-mat', scene);
-      groundMat.diffuseColor = new B.Color3(0.055, 0.072, 0.082);
+      groundMat.diffuseColor = new B.Color3(0.92, 0.94, 0.96);
       groundMat.specularColor = new B.Color3(0.08, 0.08, 0.08);
       ground.material = groundMat;
 
@@ -68,9 +69,8 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
 
       const setThemeColor = (th: 'dark' | 'light') => {
         if (th === 'light') {
-          // Creality 3D style clean light viewport atmosphere
-          scene.clearColor = new B.Color4(0.95, 0.96, 0.98, 1);
-          groundMat.diffuseColor = new B.Color3(0.88, 0.90, 0.93);
+          scene.clearColor = new B.Color4(0.96, 0.97, 0.99, 1);
+          groundMat.diffuseColor = new B.Color3(0.92, 0.94, 0.96);
           ambientLight.intensity = 1.45;
           key.intensity = 1.35;
         } else {
@@ -99,6 +99,54 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
         camera.alpha = -Math.PI / 2.25;
         camera.beta = Math.PI / 2.25;
         camera.radius = Math.max(h * 1.32, 2400);
+      };
+
+      const preset = (id: 'front' | 'side' | 'top' | '3d' | 'section' | 'detail', w: number, h: number) => {
+        const cx = w / 2;
+        const cy = h / 2;
+        const baseR = Math.max(h * 1.32, 2400);
+        let a = camera.alpha;
+        let b = camera.beta;
+        let r = camera.radius;
+        const look = new B.Vector3(cx, cy, -90);
+        switch (id) {
+          case 'front':
+            a = 0;
+            b = Math.PI / 2;
+            r = baseR;
+            break;
+          case 'side':
+            a = Math.PI / 2;
+            b = Math.PI / 2;
+            r = baseR;
+            break;
+          case 'top':
+            a = 0;
+            b = 0.06;
+            r = baseR;
+            break;
+          case '3d':
+            a = -Math.PI / 2.25;
+            b = Math.PI / 2.25;
+            r = baseR;
+            break;
+          case 'section':
+            a = -0.66;
+            b = 1.25;
+            r = Math.max(h * 0.52, 820);
+            look.set(cx * 0.55, cy, -90);
+            break;
+          case 'detail':
+            a = -Math.PI / 2.25;
+            b = Math.PI / 2.25;
+            r = Math.max(h * 0.34, 560);
+            look.set(cx + w * 0.24, cy + h * 0.05, -90);
+            break;
+        }
+        camera.alpha = a;
+        camera.beta = b;
+        camera.radius = r;
+        camera.setTarget(look);
       };
 
       const rebuild = async (cfg: DoorConfig, v: 'assembly' | 'exploded' | 'section', th: 'dark' | 'light') => {
@@ -148,16 +196,6 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
 
         const brass = new B.PBRMaterial('screw-heads', scene);
         brass.albedoColor = new B.Color3(0.61, 0.46, 0.22);
-        brass.metallic = 0.88;
-        brass.roughness = 0.25;
-
-        const box = (name: string, bw: number, bh: number, depth: number, x: number, y: number, z: number, mat: import('@babylonjs/core').Material) => {
-          const m = B.MeshBuilder.CreateBox(name, { width: bw, height: bh, depth }, scene);
-          m.position.set(x, y, z);
-          m.material = mat;
-          m.parent = root;
-          return m;
-        };
 
         const profileIds = [
           '100D-3105',
@@ -246,6 +284,23 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
           mesh.material = aluminium;
           mesh.parent = parent;
           mesh.metadata = { profileId: id, source: 'exact-dxf', hollowChambers: profile.holes.length };
+          return mesh;
+        };
+
+        const box = (
+          name: string,
+          bw: number,
+          bh: number,
+          depth: number,
+          x: number,
+          y: number,
+          z: number,
+          mat = aluminium
+        ) => {
+          const mesh = B.MeshBuilder.CreateBox(name, { width: bw, height: bh, depth }, scene);
+          mesh.position.set(x, y, z);
+          mesh.material = mat;
+          mesh.metadata = { source: 'box-fallback' };
           return mesh;
         };
 
@@ -343,11 +398,16 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
           }
         } else {
           const frameLeft = exactProfile('frame-left-100D-3105', '100D-3105', cfg.height, 'vertical', { x: 0, y: 0, z: 0 }, root, false, 'left-jamb');
-          if (frameLeft) frameLeft.position.x = -frameSpread;
+          if (!frameLeft) box('frame-left-fallback', d.frameFace, cfg.height, 100, d.frameFace / 2 - frameSpread, cfg.height / 2, 0, aluminium);
+          else if (frameSpread) frameLeft.position.x = -frameSpread;
+
           const frameRight = exactProfile('frame-right-100D-3105', '100D-3105', cfg.height, 'vertical', { x: cfg.width - d.frameFace, y: 0, z: 0 }, root, true, 'right-jamb');
-          if (frameRight) frameRight.position.x = frameSpread;
+          if (!frameRight) box('frame-right-fallback', d.frameFace, cfg.height, 100, cfg.width - d.frameFace / 2 + frameSpread, cfg.height / 2, 0, aluminium);
+          else if (frameSpread) frameRight.position.x = frameSpread;
+
           const frameHead = exactProfile('frame-head-100D-3105', '100D-3105', cfg.width, 'frame-horizontal', { x: 0, y: cfg.height - d.frameFace, z: 0 }, root, false, 'head');
-          if (frameHead) frameHead.position.y = frameSpread;
+          if (!frameHead) box('frame-head-fallback', cfg.width, d.frameFace, 100, cfg.width / 2, cfg.height - d.frameFace / 2 + frameSpread, 0, aluminium);
+          else if (frameSpread) frameHead.position.y = frameSpread;
 
           const hingeLeft = cfg.hingeSide === 'left';
           const hingeX = hingeLeft ? d.leafLeft : d.leafRight;
@@ -367,11 +427,20 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
           const leftStileId = hingeLeft ? '100D-101' : '100D-103';
           const rightStileId = hingeLeft ? '100D-103' : '100D-101';
 
-          exactProfile(`${hingeLeft ? 'hinge' : 'lock'}-stile-${leftStileId}`, leftStileId, stileLength, 'leaf-vertical', { x: d.leafLeft - hingeX - explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
-          exactProfile(`${hingeLeft ? 'lock' : 'hinge'}-stile-${rightStileId}`, rightStileId, stileLength, 'leaf-vertical', { x: d.leafRight - d.rightStileFace - hingeX + explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
-          exactProfile('top-rail-100D-201', '100D-201', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafTop - d.topRail, z: explode }, leafRoot);
-          exactProfile('mid-rail-100D-301', '100D-301', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.midCenter - d.midRail / 2, z: explode }, leafRoot);
-          exactProfile('bottom-rail-100D-401', '100D-401', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafBottom, z: explode }, leafRoot, false, 'none', true);
+          const sLeft = exactProfile(`${hingeLeft ? 'hinge' : 'lock'}-stile-${leftStileId}`, leftStileId, stileLength, 'leaf-vertical', { x: d.leafLeft - hingeX - explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
+          if (!sLeft) memberBox('left-stile-fallback', d.leftStileFace, stileLength, 100, d.leafLeft + d.leftStileFace / 2 - explode, d.leafBottom + stileLength / 2, 0, aluminium);
+
+          const sRight = exactProfile(`${hingeLeft ? 'lock' : 'hinge'}-stile-${rightStileId}`, rightStileId, stileLength, 'leaf-vertical', { x: d.leafRight - d.rightStileFace - hingeX + explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
+          if (!sRight) memberBox('right-stile-fallback', d.rightStileFace, stileLength, 100, d.leafRight - d.rightStileFace / 2 + explode, d.leafBottom + stileLength / 2, 0, aluminium);
+
+          const rTop = exactProfile('top-rail-100D-201', '100D-201', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafTop - d.topRail, z: explode }, leafRoot);
+          if (!rTop) memberBox('top-rail-fallback', railLength, d.topRail, 100, (d.railLeft + d.railRight) / 2, d.leafTop - d.topRail / 2, explode, aluminium);
+
+          const rMid = exactProfile('mid-rail-100D-301', '100D-301', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.midCenter - d.midRail / 2, z: explode }, leafRoot);
+          if (!rMid) memberBox('mid-rail-fallback', railLength, d.midRail, 100, (d.railLeft + d.railRight) / 2, d.midCenter, explode, aluminium);
+
+          const rBot = exactProfile('bottom-rail-100D-401', '100D-401', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafBottom, z: explode }, leafRoot, false, 'none', true);
+          if (!rBot) memberBox('bottom-rail-fallback', railLength, d.bottomRail, 100, (d.railLeft + d.railRight) / 2, d.leafBottom + d.bottomRail / 2, explode, aluminium);
 
           if (cfg.showGlass) {
             const glassW = d.glassX1 - d.glassX0;
@@ -469,6 +538,7 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
         setNav,
         fit,
         reset,
+        preset,
         rebuild,
         destroy: () => {
           window.removeEventListener('resize', resize);
@@ -515,33 +585,256 @@ export default function DoorViewer({ config, view, theme = 'dark' }: DoorViewerP
     controllerRef.current?.reset(config.height);
   };
 
+  const goPreset = (id: 'front' | 'side' | 'top' | '3d' | 'section' | 'detail') => {
+    setActivePresetView(id);
+    controllerRef.current?.preset(id, config.width, config.height);
+  };
+
   return (
-    <div className="viewer-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
-      {/* Viewport Control Toolbar */}
-      <div className="viewport-overlay-controls" style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, display: 'flex', gap: 6 }}>
-        <button
-          className={`btn-ctrl ${navMode === 'orbit' ? 'active' : ''}`}
-          onClick={() => setNavMode('orbit')}
-          title="Orbit Camera (Rotate around model)"
-        >
-          <Move size={14} /> Orbit
+    <div className="viewer-container" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Top Floating Viewport Control Toolbar (single line) */}
+      <div className="viewport-header-overlay" style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 10, display: 'flex', flexWrap: 'nowrap', overflowX: 'auto', alignItems: 'center', gap: 8, pointerEvents: 'none' }}>
+        {/* Left View Mode Tabs */}
+        <div className="mode-pill-group" style={{ pointerEvents: 'auto', display: 'flex', flexShrink: 0, whiteSpace: 'nowrap', background: 'rgba(255, 255, 255, 0.92)', backdropFilter: 'blur(8px)', padding: 3, borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
+          <button
+            className={`mode-pill ${view === 'assembly' ? 'active' : ''}`}
+            onClick={() => setView?.('assembly')}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '7px',
+              border: 'none',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: view === 'assembly' ? '#f59e0b' : 'transparent',
+              color: view === 'assembly' ? '#241505' : '#64748b',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Assembly
+          </button>
+          <button
+            className={`mode-pill ${view === 'exploded' ? 'active' : ''}`}
+            onClick={() => setView?.('exploded')}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '7px',
+              border: 'none',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: view === 'exploded' ? '#f59e0b' : 'transparent',
+              color: view === 'exploded' ? '#241505' : '#64748b',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Exploded
+          </button>
+          <button
+            className={`mode-pill ${view === 'section' ? 'active' : ''}`}
+            onClick={() => setView?.('section')}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '7px',
+              border: 'none',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: view === 'section' ? '#f59e0b' : 'transparent',
+              color: view === 'section' ? '#241505' : '#64748b',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Joint Check
+          </button>
+        </div>
+
+        {/* Right Camera Navigation Controls */}
+        <div className="camera-action-group" style={{ pointerEvents: 'auto', display: 'flex', flexShrink: 0, marginLeft: 'auto', whiteSpace: 'nowrap', gap: 4, background: 'rgba(255, 255, 255, 0.92)', backdropFilter: 'blur(8px)', padding: 3, borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
+          <button
+            className={`btn-ctrl ${navMode === 'orbit' ? 'active' : ''}`}
+            onClick={() => setNavMode('orbit')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '5px 10px',
+              borderRadius: '7px',
+              border: 'none',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: navMode === 'orbit' ? '#f59e0b' : 'transparent',
+              color: navMode === 'orbit' ? '#241505' : '#475569',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Move size={12} /> Orbit
+          </button>
+          <button
+            className={`btn-ctrl ${navMode === 'pan' ? 'active' : ''}`}
+            onClick={() => setNavMode('pan')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '5px 10px',
+              borderRadius: '7px',
+              border: 'none',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: navMode === 'pan' ? '#f59e0b' : 'transparent',
+              color: navMode === 'pan' ? '#241505' : '#475569',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Hand size={12} /> Pan
+          </button>
+          <button
+            className="btn-ctrl"
+            onClick={zoomToFit}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: '7px', border: 'none', background: 'transparent', color: '#475569', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+          >
+            <Maximize2 size={12} /> Fit
+          </button>
+          <button
+            className="btn-ctrl"
+            onClick={resetView}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: '7px', border: 'none', background: 'transparent', color: '#475569', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+          >
+            <RotateCcw size={12} /> Reset
+          </button>
+        </div>
+      </div>
+
+      {/* Top Right ViewCube Orientation Indicator */}
+      <div style={{ position: 'absolute', top: 74, right: 22, zIndex: 10, pointerEvents: 'none' }}>
+        <div style={{ width: 46, height: 46, background: 'rgba(18, 22, 26, 0.85)', border: '1px solid #2a3036', borderRadius: 10, boxShadow: '0 6px 16px rgba(0,0,0,0.35)', display: 'grid', placeItems: 'center' }}>
+          <div style={{ textAlign: 'center', lineHeight: 1.1 }}>
+            <span style={{ display: 'block', fontSize: 8.5, color: '#e8edf2', fontWeight: 800 }}>TOP</span>
+            <span style={{ fontSize: 7, color: '#8b98a5' }}>FRONT</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Side Vertical Floating Tool Overlay */}
+      <div style={{ position: 'absolute', right: 16, top: '46%', transform: 'translateY(-50%)', zIndex: 10, display: 'flex', flexDirection: 'column', gap: 4, background: 'rgba(18, 22, 26, 0.85)', border: '1px solid #2a3036', borderRadius: 10, padding: 4, boxShadow: '0 6px 16px rgba(0,0,0,0.35)' }}>
+        <button style={{ width: 30, height: 30, borderRadius: 7, border: 'none', background: 'transparent', color: '#b6c2ce', display: 'grid', placeItems: 'center', cursor: 'pointer' }} title="Home View">
+          <Home size={15} />
         </button>
-        <button
-          className={`btn-ctrl ${navMode === 'pan' ? 'active' : ''}`}
-          onClick={() => setNavMode('pan')}
-          title="Pan Camera (Drag to shift view)"
-        >
-          <Hand size={14} /> Pan
+        <button style={{ width: 30, height: 30, borderRadius: 7, border: 'none', background: 'transparent', color: '#b6c2ce', display: 'grid', placeItems: 'center', cursor: 'pointer' }} title="Zoom In">
+          <ZoomIn size={15} />
         </button>
-        <button className="btn-ctrl" onClick={zoomToFit} title="Zoom to Fit">
-          <Maximize2 size={14} /> Fit
+        <button style={{ width: 30, height: 30, borderRadius: 7, border: 'none', background: 'transparent', color: '#b6c2ce', display: 'grid', placeItems: 'center', cursor: 'pointer' }} title="Zoom Out">
+          <ZoomOut size={15} />
         </button>
-        <button className="btn-ctrl" onClick={resetView} title="Reset Camera Angle">
-          <RotateCcw size={14} /> Reset
+        <button style={{ width: 30, height: 30, borderRadius: 7, border: 'none', background: 'transparent', color: '#b6c2ce', display: 'grid', placeItems: 'center', cursor: 'pointer' }} title="Focus Target">
+          <Target size={15} />
+        </button>
+        <button style={{ width: 30, height: 30, borderRadius: 7, border: 'none', background: 'transparent', color: '#b6c2ce', display: 'grid', placeItems: 'center', cursor: 'pointer' }} title="Measure Tools">
+          <Ruler size={15} />
         </button>
       </div>
 
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }} aria-label="3D Aluminium Door Model" />
+      {/* 3D Canvas */}
+      <div style={{ flex: 1, position: 'relative' }}>
+        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }} aria-label="3D Aluminium Door Model" />
+      </div>
+
+      {/* Bottom Preset Gallery Bar */}
+      <div className="preset-gallery-bar" style={{ background: 'rgba(16, 18, 21, 0.94)', borderTop: '1px solid #2a3036', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 9, overflowX: 'auto', flex: 1 }}>
+          {[
+            { id: 'front', label: 'Front View' },
+            { id: 'side', label: 'Side View' },
+            { id: 'top', label: 'Top View' },
+            { id: '3d', label: '3D View' },
+            { id: 'section', label: 'Section View' },
+            { id: 'detail', label: 'Detail View' },
+          ].map((preset) => {
+            const active = activePresetView === preset.id;
+            return (
+              <button
+                key={preset.id}
+                onClick={() => goPreset(preset.id as 'front' | 'side' | 'top' | '3d' | 'section' | 'detail')}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 2,
+                  width: 88,
+                  height: 50,
+                  borderRadius: 9,
+                  border: active ? '1.5px solid #f59e0b' : '1px solid #2e353c',
+                  background: active ? 'rgba(245, 158, 11, 0.14)' : '#1a1f24',
+                  boxShadow: active ? '0 0 0 2px rgba(245, 158, 11, 0.2), 0 4px 12px rgba(0,0,0,0.28)' : 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <PresetIcon id={preset.id} active={active} />
+                <span style={{ fontSize: 9.5, fontWeight: active ? 800 : 600, color: active ? '#fbbf24' : '#aab4c0', letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
+                  {preset.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <button style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #333b44', background: '#1a1f24', display: 'grid', placeItems: 'center', color: '#aab4c0', cursor: 'pointer' }}>
+          <ChevronRight size={14} />
+        </button>
+      </div>
     </div>
+  );
+}
+
+function PresetIcon({ id, active }: { id: string; active: boolean }) {
+  const c = active ? '#fbbf24' : '#cbd5e1';
+  const sw = active ? 2.4 : 1.8;
+  return (
+    <svg viewBox="0 0 48 32" width="34" height="22" aria-hidden style={{ display: 'block', overflow: 'visible' }}>
+      <g fill="none" stroke={c} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+        {id === 'front' && (
+          <>
+            <rect x="8" y="5" width="32" height="22" rx="2" />
+            <path d="M24 5v22" />
+            <circle cx="18" cy="16" r="2.2" fill={c} stroke="none" />
+          </>
+        )}
+        {id === 'side' && (
+          <>
+            <rect x="19" y="4" width="12" height="24" rx="2" />
+            <path d="M19 10H5M19 22H9" />
+          </>
+        )}
+        {id === 'top' && (
+          <>
+            <rect x="5" y="12" width="38" height="8" rx="2" />
+            <path d="M17 12V6M17 6H11M17 20v6M17 26h-6" />
+          </>
+        )}
+        {id === '3d' && (
+          <>
+            <polygon points="24,3 39,9 39,23 24,29 9,23 9,9" />
+            <path d="M9 9l15 6 15-6M24 29V15" />
+          </>
+        )}
+        {id === 'section' && (
+          <>
+            <rect x="7" y="5" width="34" height="22" rx="2" />
+            <path d="M7 16h34M13 10l6 6M27 10l6 6M13 16l6 6M27 16l6 6" />
+          </>
+        )}
+        {id === 'detail' && (
+          <>
+            <circle cx="18" cy="14" r="9" />
+            <path d="M25 21l11 10" />
+            <circle cx="18" cy="14" r="2.6" fill={c} stroke="none" />
+          </>
+        )}
+      </g>
+    </svg>
   );
 }

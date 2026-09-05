@@ -276,7 +276,7 @@ export default function CommercialQuoteView({ project, openings, nesting, theme 
               <tbody>
                 {openings.flatMap((op) =>
                   op.glassPanels.map((g) => (
-                    <tr key={g.id}>
+                    <tr key={`${op.config.id}-${g.id}`}>
                       <td><code>{g.id}</code></td>
                       <td><b className="badge badge-unit">{op.config.tag}</b></td>
                       <td>{g.description}</td>

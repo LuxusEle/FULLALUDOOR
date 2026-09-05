@@ -10,13 +10,13 @@ interface NestingViewProps {
 }
 
 const PIECE_COLORS = [
-  '#2563eb', // blue
   '#059669', // emerald
-  '#7c3aed', // purple
+  '#b45309', // amber
+  '#0f766e', // teal
   '#ea580c', // orange
-  '#0891b2', // cyan
-  '#db2777', // pink
-  '#4f46e5', // indigo
+  '#65a30d', // lime
+  '#9a3412', // burnt orange
+  '#0e7490', // dark cyan
 ];
 
 export default function NestingView({ nesting, theme = 'dark' }: NestingViewProps) {

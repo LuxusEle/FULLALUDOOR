@@ -427,7 +427,7 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
   };
 }
 
-export function fabricationChecks(config: DoorConfig) {
+export function fabricationChecks(config: DoorConfig | OpeningItem) {
   const d = deriveDoor(config);
   return [
     { label: 'Frame corner joints', detail: 'True 45° miters or mechanical butt joints', value: 'NO OVERLAP' },
