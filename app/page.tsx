@@ -1,5 +1,10 @@
+import AccessGate from '../components/auth/access-gate';
 import DoorDesigner from './door-designer';
 
 export default function Home() {
-  return <DoorDesigner />;
+  return (
+    <AccessGate>
+      <DoorDesigner />
+    </AccessGate>
+  );
 }

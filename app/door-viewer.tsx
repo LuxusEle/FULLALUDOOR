@@ -38,8 +38,14 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
       if (cancelled || !canvasRef.current) return;
 
       engine = new B.Engine(canvasRef.current, true, { preserveDrawingBuffer: true, stencil: true });
+      engine.setHardwareScalingLevel(1);
       const scene = new B.Scene(engine);
       scene.clearColor = new B.Color4(0.96, 0.97, 0.99, 1);
+
+      scene.imageProcessingConfiguration.toneMappingEnabled = true;
+      scene.imageProcessingConfiguration.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
+      scene.imageProcessingConfiguration.exposure = 1.12;
+      scene.imageProcessingConfiguration.contrast = 1.06;
 
       const camera = new B.ArcRotateCamera('camera', -Math.PI / 2.25, Math.PI / 2.25, 3000, new B.Vector3(450, 1050, 0), scene);
       camera.lowerRadiusLimit = 150;
@@ -50,17 +56,58 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
       camera.attachControl(canvasRef.current, true);
 
       const ambientLight = new B.HemisphericLight('ambient', new B.Vector3(-0.3, 1, -0.5), scene);
-      ambientLight.intensity = 1.45;
+      ambientLight.intensity = 1.0;
 
-      const key = new B.DirectionalLight('key', new B.Vector3(-0.4, -1, 0.6), scene);
-      key.intensity = 1.35;
+      const key = new B.DirectionalLight('key', new B.Vector3(-0.42, -1, 0.55), scene);
+      key.intensity = 0.95;
+      key.position = new B.Vector3(-900, 2200, -600);
+      key.autoCalcShadowZBounds = true;
+
+      const shadowGenerator = new B.ShadowGenerator(2048, key);
+      shadowGenerator.usePercentageCloserFiltering = true;
+      shadowGenerator.filteringQuality = B.ShadowGenerator.QUALITY_HIGH;
+      shadowGenerator.bias = 0.0006;
+      shadowGenerator.normalBias = 0.02;
 
       const ground = B.MeshBuilder.CreateGround('ground', { width: 4800, height: 3200 }, scene);
       ground.position.set(450, -35, 180);
+      ground.receiveShadows = true;
       const groundMat = new B.StandardMaterial('ground-mat', scene);
       groundMat.diffuseColor = new B.Color3(0.92, 0.94, 0.96);
       groundMat.specularColor = new B.Color3(0.08, 0.08, 0.08);
       ground.material = groundMat;
+
+      void Promise.resolve(
+        B.CubeTexture.CreateFromPrefilteredData('https://assets.babylonjs.com/environments/studio.env', scene)
+      )
+        .then((texture) => {
+          if (cancelled || scene.isDisposed) return;
+          texture.gammaSpace = false;
+          scene.environmentTexture = texture;
+        })
+        .catch(() => undefined);
+      scene.environmentIntensity = 0.6;
+
+      let pipeline: import('@babylonjs/core').DefaultRenderingPipeline | null = null;
+      let ssao: import('@babylonjs/core').SSAO2RenderingPipeline | null = null;
+      try {
+        ssao = new B.SSAO2RenderingPipeline('fullaludoor-ssao', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera], false);
+        ssao.radius = 2.0;
+        ssao.totalStrength = 0.75;
+        ssao.base = 0.05;
+        ssao.maxZ = 220;
+        if (engine.webGLVersion > 1) ssao.textureSamples = 4;
+      } catch {
+        ssao = null;
+      }
+      try {
+        const created = new B.DefaultRenderingPipeline('fullaludoor-pipeline', true, scene, [camera]);
+        created.fxaaEnabled = true;
+        if (engine.webGLVersion > 1) created.samples = 4;
+        pipeline = created;
+      } catch {
+        pipeline = null;
+      }
 
       const resize = () => engine?.resize();
       window.addEventListener('resize', resize);
@@ -71,13 +118,15 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
         if (th === 'light') {
           scene.clearColor = new B.Color4(0.96, 0.97, 0.99, 1);
           groundMat.diffuseColor = new B.Color3(0.92, 0.94, 0.96);
-          ambientLight.intensity = 1.45;
-          key.intensity = 1.35;
+          ambientLight.intensity = 0.9;
+          key.intensity = 1.0;
+          scene.environmentIntensity = 0.5;
         } else {
           scene.clearColor = new B.Color4(0.035, 0.052, 0.063, 1);
           groundMat.diffuseColor = new B.Color3(0.055, 0.072, 0.082);
-          ambientLight.intensity = 1.05;
-          key.intensity = 1.25;
+          ambientLight.intensity = 0.55;
+          key.intensity = 0.8;
+          scene.environmentIntensity = 0.85;
         }
       };
 
@@ -161,41 +210,60 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
         const explode = v === 'exploded' ? 145 : v === 'section' ? 55 : 0;
 
         const finishColors = {
-          natural: new B.Color3(0.64, 0.68, 0.70),
+          natural: new B.Color3(0.66, 0.70, 0.72),
           black: new B.Color3(0.055, 0.065, 0.07),
           bronze: new B.Color3(0.28, 0.20, 0.13),
-          white: new B.Color3(0.92, 0.93, 0.94),
+          white: new B.Color3(0.93, 0.94, 0.95),
         };
 
         const finishKey = (cfg.finish || 'natural') as keyof typeof finishColors;
         const finishColor = finishColors[finishKey] || finishColors.natural;
 
-        const aluminium = new B.PBRMaterial('powder-coated-aluminium', scene);
+        const aluminium = new B.PBRMaterial('extrusion-finish', scene);
         aluminium.albedoColor = finishColor;
-        aluminium.emissiveColor = finishColor.scale(th === 'light' ? 0.08 : 0.16);
-        aluminium.metallic = 0.72;
-        aluminium.roughness = 0.3;
+        if (finishKey === 'natural') {
+          aluminium.metallic = 1.0;
+          aluminium.roughness = 0.34;
+          aluminium.specularIntensity = 1.0;
+        } else {
+          aluminium.metallic = 0.8;
+          aluminium.roughness = 0.3;
+          aluminium.specularIntensity = 0.45;
+        }
+        aluminium.environmentIntensity = 1.0;
+        aluminium.emissiveColor = finishColor.scale(th === 'light' ? 0.04 : 0.09);
+        aluminium.backFaceCulling = true;
 
         const edge = new B.PBRMaterial('machined-ends', scene);
         edge.albedoColor = new B.Color3(0.34, 0.37, 0.39);
-        edge.metallic = 0.8;
-        edge.roughness = 0.22;
+        edge.metallic = 0.92;
+        edge.roughness = 0.24;
+        edge.environmentIntensity = 0.9;
+        edge.specularIntensity = 0.6;
 
         const glass = new B.PBRMaterial('glass-mat', scene);
-        glass.albedoColor = new B.Color3(0.12, 0.42, 0.50);
-        glass.alpha = 0.32;
+        glass.albedoColor = new B.Color3(0.10, 0.42, 0.50);
+        glass.alpha = 0.28;
         glass.metallic = 0.04;
         glass.roughness = 0.12;
+        glass.specularIntensity = 1.0;
+        glass.environmentIntensity = 0.5;
         glass.indexOfRefraction = 1.52;
         glass.backFaceCulling = false;
 
         const dark = new B.PBRMaterial('hardware', scene);
-        dark.albedoColor = new B.Color3(0.06, 0.07, 0.075);
-        dark.metallic = 0.86;
-        dark.roughness = 0.23;
+        dark.albedoColor = new B.Color3(0.05, 0.06, 0.065);
+        dark.metallic = 0.9;
+        dark.roughness = 0.28;
+        dark.environmentIntensity = 0.95;
+        dark.specularIntensity = 0.55;
 
         const brass = new B.PBRMaterial('screw-heads', scene);
-        brass.albedoColor = new B.Color3(0.61, 0.46, 0.22);
+        brass.albedoColor = new B.Color3(0.63, 0.48, 0.24);
+        brass.metallic = 1.0;
+        brass.roughness = 0.35;
+        brass.environmentIntensity = 1.0;
+        brass.specularIntensity = 0.7;
 
         const profileIds = [
           '100D-3105',
@@ -295,7 +363,7 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
           x: number,
           y: number,
           z: number,
-          mat = aluminium
+          mat: import('@babylonjs/core').Material = aluminium
         ) => {
           const mesh = B.MeshBuilder.CreateBox(name, { width: bw, height: bh, depth }, scene);
           mesh.position.set(x, y, z);
@@ -396,6 +464,61 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
             g2.parent = p2Root;
             g2.visibility = 0.32;
           }
+        } else if (system === '100S-sliding-2p') {
+          const frameMember = (
+            name: string,
+            bw: number,
+            bh: number,
+            depth: number,
+            x: number,
+            y: number,
+            z: number,
+            profileId: string,
+            parent: import('@babylonjs/core').TransformNode = root,
+            mat: import('@babylonjs/core').Material = aluminium
+          ) => {
+            const mesh = box(name, bw, bh, depth, x, y, z, mat);
+            mesh.parent = parent;
+            mesh.metadata = { profileId, source: 'box-fallback' };
+            return mesh;
+          };
+
+          const frameDepth = 100;
+          const headZone = 60;
+          const sillZone = 60;
+          const jambFace = 48;
+
+          frameMember('100S-head-SD-1001', cfg.width, headZone, frameDepth, cfg.width / 2, cfg.height - headZone / 2 + frameSpread, 0, 'SD-1001');
+          frameMember('100S-sill-SD-1101', cfg.width, sillZone, frameDepth, cfg.width / 2, sillZone / 2 - frameSpread, 0, 'SD-1101');
+          frameMember('100S-jamb-l-SD-1701', jambFace, cfg.height, frameDepth, jambFace / 2, cfg.height / 2, 0, 'SD-1701');
+          frameMember('100S-jamb-r-SD-1701', jambFace, cfg.height, frameDepth, cfg.width - jambFace / 2, cfg.height / 2, 0, 'SD-1701');
+
+          const leafW = (cfg.width + 36) / 2;
+          const leafH = cfg.height - 24;
+          const stileFace = 40;
+          const railTopH = 50;
+          const railBotH = 60;
+          const railLen = leafW - stileFace * 2;
+          const sashDepth = 60;
+          const sashZ = (track: 1 | 2) => (track === 1 ? 16 : -16);
+
+          const buildSash = (name: string, leafX: number, track: 1 | 2, meetingCode: string) => {
+            const sashRoot = new B.TransformNode(name, scene);
+            sashRoot.parent = root;
+            sashRoot.position.set(leafX, sillZone - 12, sashZ(track));
+            frameMember(`${name}-jamb-stile`, stileFace, leafH, sashDepth, stileFace / 2, leafH / 2, 0, 'SD-1501', sashRoot);
+            frameMember(`${name}-meet-stile`, stileFace, leafH, sashDepth, leafW - stileFace / 2, leafH / 2, 0, meetingCode, sashRoot);
+            frameMember(`${name}-top-rail`, railLen, railTopH, sashDepth, stileFace + railLen / 2, leafH - railTopH / 2, 0, 'SD-1501', sashRoot);
+            frameMember(`${name}-bot-rail`, railLen, railBotH, sashDepth, stileFace + railLen / 2, railBotH / 2, 0, 'SD-1501', sashRoot);
+            if (cfg.showGlass) {
+              const glassPanel = box(`${name}-glass`, leafW - 104, leafH - 92, 6, leafW / 2, leafH / 2 - 5, 0, glass);
+              glassPanel.parent = sashRoot;
+              glassPanel.visibility = 0.32;
+            }
+          };
+
+          buildSash('100S-sash-front', jambFace, 1, 'SD-1301');
+          buildSash('100S-sash-rear', cfg.width - jambFace - leafW, 2, 'SD-1302');
         } else {
           const frameLeft = exactProfile('frame-left-100D-3105', '100D-3105', cfg.height, 'vertical', { x: 0, y: 0, z: 0 }, root, false, 'left-jamb');
           if (!frameLeft) box('frame-left-fallback', d.frameFace, cfg.height, 100, d.frameFace / 2 - frameSpread, cfg.height / 2, 0, aluminium);
@@ -508,6 +631,17 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
           }
         });
 
+        const unitCenter = new B.Vector3(cfg.width / 2, cfg.height / 2, 0);
+        key.position.copyFromFloats(unitCenter.x - 900, unitCenter.y + 2400, unitCenter.z - 700);
+
+        const shadowMap = shadowGenerator.getShadowMap();
+        if (shadowMap) shadowMap.renderList = [];
+        for (const mesh of root.getChildMeshes()) {
+          const isGlass = mesh.material === glass || mesh.name.includes('glass');
+          mesh.receiveShadows = !isGlass;
+          if (!isGlass) shadowGenerator.addShadowCaster(mesh);
+        }
+
         if (v === 'section') {
           if (system.startsWith('70S')) {
             camera.setTarget(new B.Vector3(cfg.width / 2, 80, 0));
@@ -542,6 +676,8 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
         rebuild,
         destroy: () => {
           window.removeEventListener('resize', resize);
+          pipeline?.dispose();
+          ssao?.dispose();
           if (currentRoot) currentRoot.dispose(false, true);
           engine?.dispose();
         },

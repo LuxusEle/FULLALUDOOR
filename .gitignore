@@ -39,3 +39,7 @@ next-env.d.ts
 /tmp/
 *.tsbuildinfo
 scratch/
+
+# Supabase CLI local link/cache
+supabase/.temp/
+

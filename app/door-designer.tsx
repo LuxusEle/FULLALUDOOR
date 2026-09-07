@@ -16,21 +16,43 @@ import {
   Scissors,
   FileCheck2,
   Home,
+  Shield,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
 import DoorViewer from './door-viewer';
+import Link from 'next/link';
 import ProjectSchedule from '../components/project-schedule';
 import VectorCadDrawings from '../components/vector-cad-drawings';
 import NestingView from '../components/nesting-view';
 import CommercialQuoteView from '../components/commercial-quote';
 import FabricationAuditReport from '../components/fabrication-audit-report';
 import CuttingPlanePrintDocument from '../components/cutting-plane-print-document';
+import CloudProjectPanel from '../components/cloud-project-panel';
+import ProjectDashboard from '../components/project-dashboard';
+import { useAccessSession } from '../components/auth/access-gate';
 import { buildManufacturingDossier } from '../lib/manufacturing-dossier';
 import type { DoorConfig } from '../lib/door-model';
 import { defaultDoorConfig, deriveDoor, doorConfigSchema, fabricationChecks } from '../lib/door-model';
 import type { DerivedOpening, OpeningItem, ProjectMetadata, TypologyId } from '../lib/types';
+import type { StoredProject, StoredProjectRef } from '../lib/project-storage';
 import { nestProjectCuts } from '../lib/nesting-engine';
+import { TYPOLOGY_LABELS } from '../components/project-schedule';
+
+type WorkspaceTab = 'dashboard' | 'studio' | 'schedule' | 'cad' | 'nesting' | 'quote' | 'audit';
+
+const SYSTEM_DEFAULT_SIZE: Record<TypologyId, { width: number; height: number }> = {
+  '100D-single': { width: 900, height: 2100 },
+  '100D-double': { width: 1800, height: 2100 },
+  '100S-sliding-2p': { width: 2400, height: 2100 },
+  '70S-sliding-2p': { width: 1800, height: 2100 },
+  '70S-sliding-4p': { width: 3200, height: 2200 },
+  '74-cgroove': { width: 1800, height: 1500 },
+  'casement': { width: 800, height: 1200 },
+};
+
+const isWindowSystem = (system: TypologyId) =>
+  system === 'casement' || system.startsWith('70S') || system.startsWith('100S');
 
 declare global {
   interface Document {
@@ -94,11 +116,13 @@ const INITIAL_OPENINGS: OpeningItem[] = [
 ];
 
 export default function DoorDesigner() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'schedule' | 'cad' | 'nesting' | 'quote' | 'audit'>('studio');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
+  const { role: accessRole } = useAccessSession();
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [project, setProject] = useState<ProjectMetadata>(INITIAL_PROJECT);
   const [openings, setOpenings] = useState<OpeningItem[]>(INITIAL_OPENINGS);
   const [activeOpeningId, setActiveOpeningId] = useState<string>(INITIAL_OPENINGS[0].id);
+  const [projectRef, setProjectRef] = useState<StoredProjectRef | null>(null);
 
   // Active opening currently loaded in 3D & 2D views
   const activeOpening = useMemo(
@@ -144,6 +168,94 @@ export default function DoorDesigner() {
         height: String(target.height),
       });
     }
+  };
+
+  const applyStoredProject = useCallback((doc: StoredProject, ref: StoredProjectRef) => {
+    setProject(doc.project);
+    setOpenings(doc.openings);
+    setProjectRef(ref);
+    setMakeStatus('');
+    const first = doc.openings[0];
+    if (first) {
+      setActiveOpeningId(first.id);
+      setConfig({
+        ...defaultDoorConfig,
+        width: first.width,
+        height: first.height,
+        system: first.system,
+        finish: first.finish,
+        hingeSide: first.hingeSide || 'left',
+        tag: first.tag,
+        quantity: first.quantity,
+        glass: first.glass,
+        location: first.location,
+      });
+      setDimensionDraft({ width: String(first.width), height: String(first.height) });
+    }
+  }, []);
+
+  const focusOpening = (opening: OpeningItem) => {
+    setActiveOpeningId(opening.id);
+    setConfig({
+      ...defaultDoorConfig,
+      width: opening.width,
+      height: opening.height,
+      system: opening.system,
+      finish: opening.finish,
+      hingeSide: opening.hingeSide || 'left',
+      tag: opening.tag,
+      quantity: opening.quantity,
+      glass: opening.glass,
+      location: opening.location,
+    });
+    setDimensionDraft({ width: String(opening.width), height: String(opening.height) });
+  };
+
+  const buildBlankUnit = (system: TypologyId, nextIndex: number): OpeningItem => {
+    const size = SYSTEM_DEFAULT_SIZE[system];
+    const prefix = isWindowSystem(system) ? 'W' : 'D';
+    return {
+      id: `open-${Date.now()}`,
+      tag: `${prefix}-${String(nextIndex).padStart(2, '0')}`,
+      name: TYPOLOGY_LABELS[system],
+      system,
+      width: size.width,
+      height: size.height,
+      quantity: 1,
+      finish: 'natural',
+      glass: '6mm-clear',
+      location: 'Ground Floor',
+      hingeSide: 'left',
+    };
+  };
+
+  const handleAddOpeningFromDashboard = (system: TypologyId) => {
+    const unit = buildBlankUnit(system, openings.length + 1);
+    setOpenings((prev) => [...prev, unit]);
+    focusOpening(unit);
+    setMakeStatus('');
+    setActiveTab('studio');
+  };
+
+  const handleStartNewProject = () => {
+    const now = new Date();
+    const freshProject: ProjectMetadata = {
+      id: `proj-${now.getTime().toString().slice(-6)}`,
+      projectName: 'New Project',
+      clientName: '',
+      projectNumber: '',
+      date: now.toISOString().slice(0, 10),
+      currency: 'USD',
+      taxRatePercent: 0,
+      contractorName: 'ALU DOOR Pro Engineering',
+    };
+    const firstUnit = buildBlankUnit('100D-single', 1);
+    setProject(freshProject);
+    setOpenings([firstUnit]);
+    setProjectRef(null);
+    setMakeStatus('');
+    focusOpening(firstUnit);
+    setActiveTab('dashboard');
   };
 
   const derived = useMemo(() => deriveDoor(config), [config]);
@@ -246,10 +358,10 @@ export default function DoorDesigner() {
     document.documentElement.setAttribute('data-theme', nextTheme);
   };
 
-  const NAV_ITEMS: { key: string; icon: typeof Home; label: string; go: 'studio' | 'schedule' | 'cad' | 'nesting' | 'quote' | 'audit' }[] = [
-    { key: 'dashboard', icon: Home, label: 'Dashboard', go: 'studio' },
-    { key: 'studio', icon: BoxSelect, label: '3D Studio', go: 'studio' },
+  const NAV_ITEMS: { key: string; icon: typeof Home; label: string; go: WorkspaceTab }[] = [
+    { key: 'dashboard', icon: Home, label: 'Dashboard', go: 'dashboard' },
     { key: 'schedule', icon: FileSpreadsheet, label: `Project Schedule (${openings.length})`, go: 'schedule' },
+    { key: 'studio', icon: BoxSelect, label: '3D Studio', go: 'studio' },
     { key: 'cad', icon: Compass, label: '2D Vector CAD', go: 'cad' },
     { key: 'nesting', icon: Scissors, label: `1D Nesting & Labels (${projectNesting.totalBarsToPull} bars)`, go: 'nesting' },
     { key: 'quote', icon: DollarSign, label: 'Commercial Quote & BOM', go: 'quote' },
@@ -278,7 +390,7 @@ export default function DoorDesigner() {
           hingeSide: { enum: ['left', 'right'] },
           finish: { enum: ['natural', 'black', 'bronze', 'white'] },
           openingAngle: { type: 'number' },
-          system: { enum: ['100D-single', '100D-double', '70S-sliding-2p', '70S-sliding-4p', '74-cgroove', 'casement'] },
+          system: { enum: ['100D-single', '100D-double', '100S-sliding-2p', '70S-sliding-2p', '70S-sliding-4p', '74-cgroove', 'casement'] },
         },
       },
       execute: async (input: Partial<DoorConfig>) => {
@@ -316,7 +428,7 @@ export default function DoorDesigner() {
         <nav className="tab-strip" style={{ flex: 1, minWidth: 0 }}>
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isActive = item.key === 'dashboard' ? false : activeTab === item.key;
+            const isActive = activeTab === item.go;
             return (
               <button
                 key={item.key}
@@ -384,8 +496,47 @@ export default function DoorDesigner() {
           <button className="btn btn-primary" onClick={exportCuttingPlanePdf} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
             <Save size={14} /> <span className="btn-txt">Export PDF</span>
           </button>
+          {accessRole === 'admin' && (
+            <Link
+              href="/admin"
+              className="btn"
+              title="Approve and manage user devices"
+              style={{ flexShrink: 0, whiteSpace: 'nowrap', textDecoration: 'none' }}
+            >
+              <Shield size={14} /> <span className="btn-txt">Admin</span>
+            </Link>
+          )}
+          <CloudProjectPanel
+            project={project}
+            openings={openings}
+            currentRef={projectRef}
+            onOpenDocument={applyStoredProject}
+            onCurrentRefChange={setProjectRef}
+          />
         </div>
       </header>
+
+      {/* ========================================================================= */}
+      {/* 0. PROJECT DASHBOARD TAB                                                   */}
+      {/* ========================================================================= */}
+      {activeTab === 'dashboard' && (
+        <ProjectDashboard
+          project={project}
+          projectRef={projectRef}
+          openings={openings}
+          derivedProjectOpenings={derivedProjectOpenings}
+          nesting={projectNesting}
+          dossier={manufacturingDossier}
+          onGo={(tab) => setActiveTab(tab)}
+          onOpenInStudio={(id) => {
+            handleSelectOpening(id);
+            setActiveTab('studio');
+          }}
+          onAddOpening={handleAddOpeningFromDashboard}
+          onNewProject={handleStartNewProject}
+          onExportPdf={exportCuttingPlanePdf}
+        />
+      )}
 
       {/* ========================================================================= */}
       {/* 1. 3D STUDIO TAB                                                          */}
@@ -489,6 +640,7 @@ export default function DoorDesigner() {
               >
                 <option value="100D-single">100 mm Single Swing Door</option>
                 <option value="100D-double">100 mm Double Swing Door</option>
+                <option value="100S-sliding-2p">100 mm Advance 2-Panel Slider (SD Series)</option>
                 <option value="70S-sliding-2p">70S 2-Track 2-Panel Slider</option>
                 <option value="70S-sliding-4p">70S 2-Track 4-Panel Slider (OXXO)</option>
                 <option value="74-cgroove">74 mm C-Groove Slider</option>
@@ -699,7 +851,7 @@ export default function DoorDesigner() {
       {/* ========================================================================= */}
       {/* 4. 1D BAR NESTING & LABELS TAB                                            */}
       {/* ========================================================================= */}
-      {activeTab === 'nesting' && <NestingView nesting={projectNesting} theme={theme} />}
+      {activeTab === 'nesting' && <NestingView nesting={projectNesting} cuts={allProjectCuts} theme={theme} />}
 
       {/* ========================================================================= */}
       {/* 5. COMMERCIAL QUOTE & MASTER BOM TAB                                      */}

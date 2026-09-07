@@ -65,6 +65,21 @@ describe('door fabrication model', () => {
     expect(d.cutList.some((c) => c.profile === '70S-1501')).toBe(true);
     expect(d.hardware.some((h) => h.code === '70S-1914')).toBe(true);
   });
+
+  it('derives the 100 mm Advance 2-panel sliding system with SD-series profiles', () => {
+    const d = deriveDoor({ ...defaultDoorConfig, system: '100S-sliding-2p', width: 2400, height: 2200 });
+    const profiles = d.cutList.map((cut) => cut.profile);
+    expect(profiles).toContain('SD-1001');
+    expect(profiles).toContain('SD-1101');
+    expect(profiles).toContain('SD-1701');
+    expect(profiles).toContain('SD-1501');
+    expect(profiles).toContain('SD-1301');
+    expect(profiles).toContain('SD-1302');
+    expect(profiles).toContain('GL-108');
+    expect(profiles).toContain('GL-109');
+    expect(d.hardware.some((h) => h.code === '100S-ROL')).toBe(true);
+    expect(d.cutList.find((cut) => cut.id === '100S-FH')?.length).toBeCloseTo(2400, 1);
+  });
 });
 
 describe('1D linear bar nesting engine', () => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CutItem, DerivedOpening, OpeningItem, TypologyId } from './types';
+import { TYPOLOGY_IDS } from './types';
 
 export const doorConfigSchema = z.object({
   width: z.number().min(700).max(1400),
@@ -9,7 +10,7 @@ export const doorConfigSchema = z.object({
   finish: z.enum(['natural', 'black', 'bronze', 'white']).default('natural'),
   exploded: z.boolean().default(false),
   showGlass: z.boolean().default(true),
-  system: z.enum(['100D-single', '100D-double', '70S-sliding-2p', '70S-sliding-4p', '74-cgroove', 'casement']).default('100D-single'),
+  system: z.enum(TYPOLOGY_IDS).default('100D-single'),
   tag: z.string().default('D-01'),
   quantity: z.number().min(1).default(1),
   glass: z.enum(['6mm-clear', '8mm-tinted', '10.38mm-laminated', '12mm-toughened', '24mm-dgu']).default('6mm-clear'),
@@ -43,6 +44,15 @@ export const PROFILE_WEIGHTS: Record<string, { name: string; kgM: number; depth:
   '100D-301':  { name: 'Mid Rail (Transom)', kgM: 1.45, depth: 45.0, face: 100.0 },
   '100D-401':  { name: 'Bottom Rail', kgM: 1.85, depth: 45.0, face: 120.0 },
   '100D-501':  { name: 'Snap Glazing Bead', kgM: 0.18, depth: 14.0, face: 16.0 },
+  // 100 mm Advance Sliding Series (SD)
+  'SD-1001':   { name: 'Outer Frame Top Track', kgM: 1.62, depth: 100.0, face: 88.0 },
+  'SD-1101':   { name: 'Outer Frame Bottom Track', kgM: 1.72, depth: 100.0, face: 88.0 },
+  'SD-1701':   { name: 'Outer Frame Side Jamb', kgM: 1.18, depth: 100.0, face: 48.0 },
+  'SD-1501':   { name: 'Sash Frame (Top/Bottom/Side)', kgM: 1.06, depth: 48.0, face: 60.0 },
+  'SD-1301':   { name: 'Sash Interlock Stile', kgM: 0.62, depth: 48.0, face: 40.0 },
+  'SD-1302':   { name: 'Sash Interlock Stile', kgM: 0.62, depth: 48.0, face: 40.0 },
+  'GL-108':    { name: 'Glazing Bead', kgM: 0.21, depth: 12.0, face: 15.0 },
+  'GL-109':    { name: 'Glazing Bead', kgM: 0.21, depth: 12.0, face: 15.0 },
   // 70S Sliding Series
   '70S-1001-1': { name: '2-Track Frame Head', kgM: 0.94, depth: 32.0, face: 69.7 },
   '70S-1101-1': { name: '2-Track Frame Sill', kgM: 1.05, depth: 30.0, face: 69.7 },
@@ -227,6 +237,45 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
       { code: 'ROD-M6',  name: 'M6 Threaded Tie Rod with Brass Nuts', qty: 6, unit: 'pcs', category: 'Cleats' },
       { code: 'EPDM-01', name: 'Wedge EPDM Glazing Gasket', qty: Number((perimeterM * 3.6).toFixed(1)), unit: 'm', category: 'Gaskets' },
       { code: 'SCR-ST',  name: 'Stainless Steel Assembly Screws', qty: 48, unit: 'pcs', category: 'Fasteners' }
+    );
+  } else if (system === '100S-sliding-2p') {
+    const interlockOverlap = 36;
+    const leafW = (width + interlockOverlap) / 2;
+    const leafH = height - 24;
+    const sashStileFace = 40;
+    const sashRailLen = leafW - sashStileFace * 2;
+    const gw = sashRailLen - 24;
+    const gh = leafH - 92;
+
+    cutList = [
+      makeCut('100S-FH', 'SD-1001', 'Outer frame top track', 1, width, '90° square', 90, 90, 'Outer Frame'),
+      makeCut('100S-FS', 'SD-1101', 'Outer frame bottom track / sill', 1, width, '90° square', 90, 90, 'Outer Frame'),
+      makeCut('100S-FJ', 'SD-1701', 'Outer frame side jambs', 2, height, '90° square', 90, 90, 'Outer Frame'),
+      makeCut('100S-RT', 'SD-1501', 'Sash top rails', 2, sashRailLen, '90° square', 90, 90, 'Sash / Leaf'),
+      makeCut('100S-RB', 'SD-1501', 'Sash bottom rails', 2, sashRailLen, '90° square', 90, 90, 'Sash / Leaf'),
+      makeCut('100S-SS', 'SD-1501', 'Sash side stiles (jamb side)', 2, leafH, '90° square', 90, 90, 'Sash / Leaf'),
+      makeCut('100S-IL', 'SD-1301', 'Sash interlock stile (leaf 1)', 1, leafH, '90° square', 90, 90, 'Sash / Leaf'),
+      makeCut('100S-IR', 'SD-1302', 'Sash interlock stile (leaf 2)', 1, leafH, '90° square', 90, 90, 'Sash / Leaf'),
+      makeCut('100S-B1', 'GL-108', 'Top glazing beads', 4, gw, '90° square', 90, 90, 'Glazing Bead'),
+      makeCut('100S-B2', 'GL-109', 'Bottom glazing beads', 4, gw, '90° square', 90, 90, 'Glazing Bead'),
+    ];
+
+    glassPanels.push({
+      id: `${tag}-GSD`,
+      width: gw,
+      height: gh,
+      areaM2: Number(((gw * gh * 2) / 1e6).toFixed(3)),
+      thickness: 6,
+      description: '6mm Clear Tempered Glass (2 sliding sashes)',
+      qty: 2,
+    });
+
+    hardware.push(
+      { code: '100S-ROL', name: 'Heavy-Duty Sash Roller Carriages (100 mm Series)', qty: 4, unit: 'pcs', category: 'Rollers' },
+      { code: '100S-LCK', name: 'Sliding Hook-Lock Handle Set', qty: 1, unit: 'set', category: 'Locks' },
+      { code: '100S-WPL', name: 'Continuous Wool-Pile Weatherstrip', qty: Number((((leafW + leafH) * 4) / 1000).toFixed(1)), unit: 'm', category: 'Gaskets' },
+      { code: '100S-EPDM', name: 'U-Channel Glass Gasket (6mm)', qty: Number((((gw + gh) * 4) / 1000).toFixed(1)), unit: 'm', category: 'Gaskets' },
+      { code: 'SCR-42', name: 'Assembly Self-Tapping Screws 4.2x38', qty: 24, unit: 'pcs', category: 'Fasteners' }
     );
   } else if (system === '70S-sliding-2p') {
     frameFace = 32;

@@ -17,6 +17,7 @@ interface ProjectScheduleProps {
 export const TYPOLOGY_LABELS: Record<TypologyId, string> = {
   '100D-single': '100 mm Single Leaf Swing Door',
   '100D-double': '100 mm Double Leaf Swing Door',
+  '100S-sliding-2p': '100 mm Advance 2-Panel Sliding Door/Window (SD)',
   '70S-sliding-2p': '70S 2-Track 2-Panel Sliding Door',
   '70S-sliding-4p': '70S 2-Track 4-Panel Sliding Door (OXXO)',
   '74-cgroove': '74 mm C-Groove Residential Slider',
@@ -35,7 +36,7 @@ export default function ProjectSchedule({
 
   const addOpening = () => {
     const nextIndex = openings.length + 1;
-    const isWindow = selectedSystem === 'casement' || selectedSystem.startsWith('70S');
+    const isWindow = selectedSystem === 'casement' || selectedSystem.startsWith('70S') || selectedSystem.startsWith('100S');
     const tagPrefix = isWindow ? 'W' : 'D';
     const tag = `${tagPrefix}-${String(nextIndex).padStart(2, '0')}`;
 
@@ -43,6 +44,9 @@ export default function ProjectSchedule({
     let defaultH = 2100;
     if (selectedSystem === '100D-double') {
       defaultW = 1800;
+      defaultH = 2100;
+    } else if (selectedSystem === '100S-sliding-2p') {
+      defaultW = 2400;
       defaultH = 2100;
     } else if (selectedSystem === '70S-sliding-2p') {
       defaultW = 1800;
@@ -184,7 +188,7 @@ export default function ProjectSchedule({
             ))}
           </select>
           <button className="btn btn-primary" onClick={addOpening}>
-            <Plus size={14} /> Add Opening Unit
+            <Plus size={14} /> <span className="btn-label">Add Opening Unit</span>
           </button>
         </div>
         <div className="toolbar-info">

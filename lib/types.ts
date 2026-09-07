@@ -1,10 +1,21 @@
 export type TypologyId =
   | '100D-single'
   | '100D-double'
+  | '100S-sliding-2p'
   | '70S-sliding-2p'
   | '70S-sliding-4p'
   | '74-cgroove'
   | 'casement';
+
+export const TYPOLOGY_IDS = [
+  '100D-single',
+  '100D-double',
+  '100S-sliding-2p',
+  '70S-sliding-2p',
+  '70S-sliding-4p',
+  '74-cgroove',
+  'casement',
+] as const satisfies readonly TypologyId[];
 
 export type FinishType = 'natural' | 'black' | 'bronze' | 'white';
 
@@ -124,8 +135,11 @@ export interface ProfileNestingResult {
   bars: NestedBar[];
 }
 
+export type NestingStrategy = 'first-fit' | 'best-fit';
+
 export interface ProjectNestingSummary {
   resultsByProfile: ProfileNestingResult[];
+  strategy: NestingStrategy;
   totalBarsToPull: number;
   totalProfileLengthM: number;
   totalStockLengthM: number;
@@ -133,6 +147,8 @@ export interface ProjectNestingSummary {
   overallEfficiencyPercent: number;
   totalReusableOffcutsM: number;
   totalScrapOffcutsM: number;
+  totalKerfWasteM: number;
+  reusableOffcutCount: number;
 }
 
 export interface MasterBOMItem {

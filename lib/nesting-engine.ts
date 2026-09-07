@@ -1,47 +1,71 @@
-import type { CutItem, NestedBar, ProfileNestingResult, ProjectNestingSummary } from './types';
+import type { CutItem, NestedBar, NestingStrategy, ProfileNestingResult, ProjectNestingSummary } from './types';
 import { PROFILE_WEIGHTS } from './door-model';
 
 export const DEFAULT_STOCK_LEN_MM = 6000.0;
 export const DEFAULT_BLADE_KERF_MM = 3.5;
 export const USABLE_OFFCUT_MIN_MM = 500.0;
 
+interface NestPiece {
+  cutId: string;
+  openingTag: string;
+  description: string;
+  lengthMm: number;
+  angleL: number;
+  angleR: number;
+}
+
+/**
+ * 1D bin-packing heuristics for aluminium bar nesting.
+ * - first-fit decreasing: classic FFD, opens a new bar as soon as the current one
+ *   cannot host the next (largest-first) piece.
+ * - best-fit decreasing: tries every already-opened bar (i.e. every remaining
+ *   offcut) first and places the piece into the bar that leaves the least slack,
+ *   only opening a fresh stock bar when no offcut can absorb it. This is the
+ *   "reuse offcuts before cutting new stock" behaviour and minimizes scrap.
+ */
 export function nestSingleProfile(
   profileCode: string,
-  pieces: Array<{
-    cutId: string;
-    openingTag: string;
-    description: string;
-    lengthMm: number;
-    angleL: number;
-    angleR: number;
-  }>,
+  pieces: NestPiece[],
   stockLengthMm = DEFAULT_STOCK_LEN_MM,
-  bladeKerfMm = DEFAULT_BLADE_KERF_MM
+  bladeKerfMm = DEFAULT_BLADE_KERF_MM,
+  strategy: NestingStrategy = 'best-fit'
 ): ProfileNestingResult {
   const spec = PROFILE_WEIGHTS[profileCode] || { name: 'Aluminium Section', kgM: 1.0 };
-  const sorted = [...pieces].sort((a, b) => b.lengthMm - a.lengthMm);
+  const sorted = [...pieces].sort((a, b) => b.lengthMm - a.lengthMm || a.cutId.localeCompare(b.cutId));
   const bars: NestedBar[] = [];
 
+  const kerfBefore = (bar: NestedBar) => (bar.cuts.length === 0 ? 0 : bladeKerfMm);
+
   for (const piece of sorted) {
-    let placed = false;
+    let bestBar: NestedBar | null = null;
+    let bestSlack = Infinity;
+
     for (const bar of bars) {
-      const kerf = bar.cuts.length === 0 ? 0 : bladeKerfMm;
-      if (bar.usedLengthMm + kerf + piece.lengthMm <= stockLengthMm) {
-        bar.cuts.push({
-          cutId: piece.cutId,
-          openingTag: piece.openingTag,
-          pieceDescription: piece.description,
-          lengthMm: piece.lengthMm,
-          angleL: piece.angleL,
-          angleR: piece.angleR,
-        });
-        bar.usedLengthMm += kerf + piece.lengthMm;
-        placed = true;
+      const slack = stockLengthMm - bar.usedLengthMm - kerfBefore(bar) - piece.lengthMm;
+      if (slack < 0) continue;
+      if (strategy === 'best-fit') {
+        if (slack < bestSlack) {
+          bestSlack = slack;
+          bestBar = bar;
+        }
+      } else {
+        bestBar = bar;
         break;
       }
     }
 
-    if (!placed) {
+    if (bestBar) {
+      const kerf = kerfBefore(bestBar);
+      bestBar.cuts.push({
+        cutId: piece.cutId,
+        openingTag: piece.openingTag,
+        pieceDescription: piece.description,
+        lengthMm: piece.lengthMm,
+        angleL: piece.angleL,
+        angleR: piece.angleR,
+      });
+      bestBar.usedLengthMm += kerf + piece.lengthMm;
+    } else {
       bars.push({
         barIndex: bars.length + 1,
         profileCode,
@@ -72,7 +96,7 @@ export function nestSingleProfile(
   let totalReusableMm = 0;
 
   for (const bar of bars) {
-    const cutsSum = bar.cuts.reduce((s, c) => s + c.lengthMm, 0);
+    const cutsSum = bar.cuts.reduce((sum, cut) => sum + cut.lengthMm, 0);
     const kerfSum = Math.max(0, bar.cuts.length - 1) * bladeKerfMm;
     const offcut = Math.max(0, stockLengthMm - (cutsSum + kerfSum));
 
@@ -113,24 +137,19 @@ export function nestSingleProfile(
   };
 }
 
+export interface NestProjectOptions {
+  strategy?: NestingStrategy;
+}
+
 export function nestProjectCuts(
   allCuts: CutItem[],
   stockLengthMm = DEFAULT_STOCK_LEN_MM,
-  bladeKerfMm = DEFAULT_BLADE_KERF_MM
+  bladeKerfMm = DEFAULT_BLADE_KERF_MM,
+  options: NestProjectOptions = {}
 ): ProjectNestingSummary {
-  // Group pieces by profile code
-  const groups = new Map<
-    string,
-    Array<{
-      cutId: string;
-      openingTag: string;
-      description: string;
-      lengthMm: number;
-      angleL: number;
-      angleR: number;
-    }>
-  >();
+  const strategy: NestingStrategy = options.strategy ?? 'best-fit';
 
+  const groups = new Map<string, NestPiece[]>();
   for (const cut of allCuts) {
     if (cut.length <= 0) continue;
     if (!groups.has(cut.profile)) {
@@ -154,19 +173,29 @@ export function nestProjectCuts(
   let totalStockLengthM = 0;
   let totalAluWeightKg = 0;
   let totalReusableOffcutsM = 0;
-  let totalScrapOffcutsM = 0;
+  let totalKerfWasteM = 0;
+  let reusableOffcutCount = 0;
 
   for (const [code, pieces] of groups.entries()) {
-    const result = nestSingleProfile(code, pieces, stockLengthMm, bladeKerfMm);
+    const result = nestSingleProfile(code, pieces, stockLengthMm, bladeKerfMm, strategy);
     resultsByProfile.push(result);
     totalBarsToPull += result.totalStockBars;
     totalProfileLengthM += result.totalNetLengthM;
     totalStockLengthM += result.totalStockLengthM;
     totalAluWeightKg += result.totalWeightKg;
     totalReusableOffcutsM += result.totalReusableOffcutsM;
-    totalScrapOffcutsM += Number(((result.totalStockLengthM - result.totalNetLengthM - result.totalReusableOffcutsM)).toFixed(2));
+
+    for (const bar of result.bars) {
+      totalKerfWasteM += bar.kerfWasteMm / 1000;
+      if (bar.isReusableOffcut) {
+        reusableOffcutCount += 1;
+      }
+    }
   }
 
+  const totalScrapOffcutsM = Number(
+    Math.max(0, totalStockLengthM - totalProfileLengthM - totalReusableOffcutsM - totalKerfWasteM).toFixed(2)
+  );
   const overallEfficiencyPercent =
     totalStockLengthM > 0
       ? Number(((totalProfileLengthM / totalStockLengthM) * 100).toFixed(1))
@@ -174,12 +203,23 @@ export function nestProjectCuts(
 
   return {
     resultsByProfile,
+    strategy,
     totalBarsToPull,
     totalProfileLengthM: Number(totalProfileLengthM.toFixed(2)),
     totalStockLengthM: Number(totalStockLengthM.toFixed(2)),
     totalAluWeightKg: Number(totalAluWeightKg.toFixed(2)),
     overallEfficiencyPercent,
     totalReusableOffcutsM: Number(totalReusableOffcutsM.toFixed(2)),
-    totalScrapOffcutsM: Number(Math.max(0, totalScrapOffcutsM).toFixed(2)),
+    totalScrapOffcutsM,
+    totalKerfWasteM: Number(totalKerfWasteM.toFixed(2)),
+    reusableOffcutCount,
   };
 }
+
+// Kept for backwards-compatibility callers that may want the raw first-fit mode.
+export const nestProjectCutsFirstFit = (
+  allCuts: CutItem[],
+  stockLengthMm = DEFAULT_STOCK_LEN_MM,
+  bladeKerfMm = DEFAULT_BLADE_KERF_MM
+): ProjectNestingSummary =>
+  nestProjectCuts(allCuts, stockLengthMm, bladeKerfMm, { strategy: 'first-fit' });
