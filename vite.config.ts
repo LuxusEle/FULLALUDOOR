@@ -51,6 +51,25 @@ export default defineConfig(async () => {
   process.env.WRANGLER_LOG_PATH ??= '.wrangler/logs';
   process.env.MINIFLARE_REGISTRY_PATH ??= '.wrangler/registry';
 
+  const isVercelBuild = !!process.env.VERCEL;
+
+  // Vercel (GitHub import) — static export. No Cloudflare bindings or sites plugin.
+  // Vercel sets VERCEL=1 automatically; locally test with `VERCEL=1 npm run build`.
+  if (isVercelBuild) {
+    return {
+      css: { postcss: { plugins: [tailwindcss()] } },
+      server: isCodexSeatbeltSandbox
+        ? { watch: { useFsEvents: false, usePolling: true } }
+        : undefined,
+      plugins: [
+        vinext({
+          nextConfig: { output: 'export' },
+        }),
+      ],
+    };
+  }
+
+  // Cloudflare / local — Worker with bindings.
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 

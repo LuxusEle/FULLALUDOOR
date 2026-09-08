@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vinext dev -H 0.0.0.0 -p 9898",
     "build": "vinext build",
+    "build:vercel": "VERCEL=1 vinext build",
     "deploy": "npm run build && npx wrangler deploy --config dist/server/wrangler.json --name fullaludoor",
     "test": "vitest run --config vitest.config.ts",
     "start": "wrangler dev --config dist/server/wrangler.json",
