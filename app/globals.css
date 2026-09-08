@@ -1936,3 +1936,20 @@ h1, h2, h3, h4, p, span, a, button { overflow-wrap: break-word; word-break: norm
   .bar-stats { flex-wrap: wrap; gap: 8px; }
   .labels-grid { grid-template-columns: 1fr; }
 }
+
+/* Modal dialog grid responsiveness */
+.modal-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 540px) {
+  .modal-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+  .modal-card {
+    padding: 16px 14px !important;
+    max-height: 92vh !important;
+  }
+}

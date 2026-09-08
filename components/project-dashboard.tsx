@@ -13,12 +13,14 @@ import {
   FileCheck2,
   FileSpreadsheet,
   FolderKanban,
+  FolderOpen,
   Layers,
   Plus,
   Scissors,
   ShieldCheck,
   Sparkles,
   Weight,
+  X,
 } from 'lucide-react';
 import type { DerivedOpening, OpeningItem, ProjectMetadata, TypologyId } from '../lib/types';
 import type { StoredProjectRef } from '../lib/project-storage';
@@ -27,6 +29,19 @@ import type { ProjectNestingSummary } from '../lib/types';
 import { TYPOLOGY_LABELS } from './project-schedule';
 
 export type DashboardGo = 'studio' | 'schedule' | 'cad' | 'nesting' | 'quote' | 'audit';
+
+/** Editable project details collected when creating a new project. */
+export interface NewProjectDetails {
+  projectName: string;
+  clientName: string;
+  projectNumber: string;
+  date: string;
+  currency: string;
+  taxRatePercent: number;
+  contractorName: string;
+}
+
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'AED', 'INR', 'LKR'] as const;
 
 interface ProjectDashboardProps {
   project: ProjectMetadata;
@@ -38,8 +53,9 @@ interface ProjectDashboardProps {
   onGo: (tab: DashboardGo) => void;
   onOpenInStudio: (id: string) => void;
   onAddOpening: (system: TypologyId) => void;
-  onNewProject: () => void;
+  onNewProject: (details: NewProjectDetails) => void;
   onExportPdf: () => void;
+  onOpenProjects: () => void;
 }
 
 const SYSTEM_SHORT: Record<TypologyId, string> = {
@@ -71,9 +87,10 @@ export default function ProjectDashboard({
   onAddOpening,
   onNewProject,
   onExportPdf,
+  onOpenProjects,
 }: ProjectDashboardProps) {
   const [quickSystem, setQuickSystem] = useState<TypologyId>('100D-single');
-  const [confirmNew, setConfirmNew] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
 
   const stats = useMemo(() => {
     const totalUnits = openings.reduce((sum, o) => sum + o.quantity, 0);
@@ -143,36 +160,20 @@ export default function ProjectDashboard({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', minWidth: 0, flex: '0 1 auto', justifyContent: 'flex-end' }}>
-          {confirmNew ? (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--panel)', border: '1px solid var(--edge)', borderRadius: 9, padding: '4px 6px' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger)', padding: '0 6px' }}>Start a new project?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmNew(false);
-                  onNewProject();
-                }}
-                style={{ height: 28, padding: '0 10px', border: '1px solid var(--danger)', background: 'var(--danger)', color: '#ffffff', borderRadius: 7, fontWeight: 800, fontSize: 12, cursor: 'pointer' }}
-              >
-                Yes, Start New
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmNew(false)}
-                style={{ height: 28, padding: '0 10px', border: '1px solid var(--edge-strong)', background: 'transparent', color: 'var(--ink)', borderRadius: 7, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmNew(true)}
-              style={{ height: 38, padding: '0 14px', border: '1px solid var(--edge-strong)', background: 'transparent', color: 'var(--ink)', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
-            >
-              <Sparkles size={14} /> New Project
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onOpenProjects}
+            style={{ height: 38, padding: '0 14px', border: '1px solid var(--edge-strong)', background: 'transparent', color: 'var(--ink)', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+          >
+            <FolderOpen size={14} /> My Projects
+          </button>
+          <button
+            type="button"
+            onClick={() => setNewOpen(true)}
+            style={{ height: 38, padding: '0 14px', border: '1px solid var(--edge-strong)', background: 'transparent', color: 'var(--ink)', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+          >
+            <Sparkles size={14} /> New Project
+          </button>
           <button
             type="button"
             onClick={() => onGo('schedule')}
@@ -344,6 +345,25 @@ export default function ProjectDashboard({
           </div>
         </div>
       </div>
+
+      {newOpen && (
+        <NewProjectDialog
+          initial={{
+            projectName: '',
+            clientName: project.clientName,
+            projectNumber: '',
+            date: new Date().toISOString().slice(0, 10),
+            currency: CURRENCIES.includes(project.currency as (typeof CURRENCIES)[number]) ? project.currency : 'USD',
+            taxRatePercent: project.taxRatePercent,
+            contractorName: project.contractorName,
+          }}
+          onCancel={() => setNewOpen(false)}
+          onCreate={(details) => {
+            onNewProject(details);
+            setNewOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -357,6 +377,122 @@ function KpiCard({ label, value, sub, icon, tone }: { label: string; value: stri
       </div>
       <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'JetBrains Mono', ui-monospace, monospace", color: 'var(--ink)', letterSpacing: '-0.02em', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={value}>{value}</div>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>
+    </div>
+  );
+}
+
+function NewProjectDialog({ initial, onCancel, onCreate }: { initial: NewProjectDetails; onCancel: () => void; onCreate: (details: NewProjectDetails) => void }) {
+  const [form, setForm] = useState<NewProjectDetails>(initial);
+  const [error, setError] = useState<string | null>(null);
+
+  const patch = (key: keyof NewProjectDetails, value: string) =>
+    setForm((current) => ({
+      ...current,
+      [key]: key === 'taxRatePercent' ? (Number(value) || 0) : value,
+    }));
+
+  const submit = () => {
+    if (!form.projectName.trim()) {
+      setError('Please enter a project name.');
+      return;
+    }
+    if (!form.date) {
+      setError('Please enter a project date.');
+      return;
+    }
+    setError(null);
+    onCreate({
+      projectName: form.projectName.trim(),
+      clientName: form.clientName.trim(),
+      projectNumber: form.projectNumber.trim(),
+      date: form.date,
+      currency: form.currency,
+      taxRatePercent: form.taxRatePercent,
+      contractorName: form.contractorName.trim(),
+    });
+  };
+
+  const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6 };
+  const label: CSSProperties = { fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="New project details"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(3, 7, 12, 0.66)', zIndex: 200, display: 'grid', placeItems: 'center', padding: 16 }}
+    >
+      <div className="modal-card" style={{ width: 'min(540px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'var(--card-bg)', border: '1px solid var(--edge)', borderRadius: 16, padding: '20px 22px', boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <span style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent-strong)' }}>
+            <Sparkles size={17} />
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-0.02em' }}>New Project</h2>
+            <p style={{ margin: '5px 0 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+              Add the project details below. This creates a fresh project with one blank door unit to get started.
+            </p>
+          </div>
+          <button type="button" onClick={onCancel} aria-label="Close" style={{ flexShrink: 0, width: 30, height: 30, display: 'grid', placeItems: 'center', border: '1px solid var(--edge)', background: 'transparent', color: 'var(--muted)', borderRadius: 8, cursor: 'pointer' }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
+          <div style={field}>
+            <label style={label}>Project name *</label>
+            <input className="input" autoFocus value={form.projectName} onChange={(e) => patch('projectName', e.target.value)} placeholder="e.g. Skyline Residence Glazing" />
+          </div>
+          <div className="modal-grid-2">
+            <div style={field}>
+              <label style={label}>Client</label>
+              <input className="input" value={form.clientName} onChange={(e) => patch('clientName', e.target.value)} placeholder="Client name" />
+            </div>
+            <div style={field}>
+              <label style={label}>Project number / ref</label>
+              <input className="input" value={form.projectNumber} onChange={(e) => patch('projectNumber', e.target.value)} placeholder="e.g. ALU-2026-09" />
+            </div>
+          </div>
+          <div className="modal-grid-2">
+            <div style={field}>
+              <label style={label}>Date</label>
+              <input className="input" type="date" value={form.date} onChange={(e) => patch('date', e.target.value)} />
+            </div>
+            <div style={field}>
+              <label style={label}>Currency</label>
+              <select className="select" value={form.currency} onChange={(e) => patch('currency', e.target.value)}>
+                {CURRENCIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="modal-grid-2">
+            <div style={field}>
+              <label style={label}>Contractor</label>
+              <input className="input" value={form.contractorName} onChange={(e) => patch('contractorName', e.target.value)} placeholder="Fabricating contractor" />
+            </div>
+            <div style={field}>
+              <label style={label}>Tax rate (%)</label>
+              <input className="input" type="number" min={0} step="0.5" value={String(form.taxRatePercent)} onChange={(e) => patch('taxRatePercent', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {error && <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--danger)' }}>{error}</p>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
+          <button type="button" onClick={onCancel} style={{ height: 38, padding: '0 16px', border: '1px solid var(--edge-strong)', background: 'transparent', color: 'var(--ink)', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" onClick={submit} style={{ height: 38, justifyContent: 'center' }}>
+            <Plus size={15} /> Create Project
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

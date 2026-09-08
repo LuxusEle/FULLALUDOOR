@@ -20,7 +20,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
-import DoorViewer from './door-viewer';
 import Link from 'next/link';
 import ProjectSchedule from '../components/project-schedule';
 import VectorCadDrawings from '../components/vector-cad-drawings';
@@ -29,7 +28,8 @@ import CommercialQuoteView from '../components/commercial-quote';
 import FabricationAuditReport from '../components/fabrication-audit-report';
 import CuttingPlanePrintDocument from '../components/cutting-plane-print-document';
 import CloudProjectPanel from '../components/cloud-project-panel';
-import ProjectDashboard from '../components/project-dashboard';
+import ProjectLibrary from '../components/project-library';
+import ProjectDashboard, { type NewProjectDetails } from '../components/project-dashboard';
 import { useAccessSession } from '../components/auth/access-gate';
 import { buildManufacturingDossier } from '../lib/manufacturing-dossier';
 import type { DoorConfig } from '../lib/door-model';
@@ -117,6 +117,7 @@ const INITIAL_OPENINGS: OpeningItem[] = [
 
 export default function DoorDesigner() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const { role: accessRole } = useAccessSession();
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [project, setProject] = useState<ProjectMetadata>(INITIAL_PROJECT);
@@ -238,17 +239,17 @@ export default function DoorDesigner() {
     setActiveTab('studio');
   };
 
-  const handleStartNewProject = () => {
+  const handleStartNewProject = (details: NewProjectDetails) => {
     const now = new Date();
     const freshProject: ProjectMetadata = {
       id: `proj-${now.getTime().toString().slice(-6)}`,
-      projectName: 'New Project',
-      clientName: '',
-      projectNumber: '',
-      date: now.toISOString().slice(0, 10),
-      currency: 'USD',
-      taxRatePercent: 0,
-      contractorName: 'ALU DOOR Pro Engineering',
+      projectName: details.projectName?.trim() || 'New Project',
+      clientName: details.clientName || '',
+      projectNumber: details.projectNumber || '',
+      date: details.date || now.toISOString().slice(0, 10),
+      currency: details.currency || 'USD',
+      taxRatePercent: details.taxRatePercent,
+      contractorName: details.contractorName || 'ALU DOOR Pro Engineering',
     };
     const firstUnit = buildBlankUnit('100D-single', 1);
     setProject(freshProject);
@@ -540,6 +541,7 @@ export default function DoorDesigner() {
             setActiveTab('studio');
           }}
           onAddOpening={handleAddOpeningFromDashboard}
+          onOpenProjects={() => setProjectsOpen(true)}
           onNewProject={handleStartNewProject}
           onExportPdf={exportCuttingPlanePdf}
         />
@@ -753,20 +755,22 @@ export default function DoorDesigner() {
               </div>
 
               <div className="switch-row">
-                <span>Threshold Weather Seal</span>
-                <button
-                  type="button"
-                  className={`switch ${config.thresholdSeal ? 'on' : ''}`}
-                  onClick={() => setConfig((prev) => ({ ...prev, thresholdSeal: !prev.thresholdSeal }))}
-                >
-                  <span />
-                </button>
+                  <span>Threshold Weather Seal</span>
+                  <button
+                    type="button"
+                    aria-label="Toggle threshold weather seal"
+                    className={`switch ${config.thresholdSeal ? 'on' : ''}`}
+                    onClick={() => setConfig((prev) => ({ ...prev, thresholdSeal: !prev.thresholdSeal }))}
+                  >
+                    <span />
+                  </button>
               </div>
 
               <div className="switch-row">
                 <span>Concealed Overhead Closer</span>
                 <button
                   type="button"
+                  aria-label="Toggle concealed overhead closer"
                   className={`switch ${config.closer ? 'on' : ''}`}
                   onClick={() => setConfig((prev) => ({ ...prev, closer: !prev.closer }))}
                 >
@@ -778,6 +782,7 @@ export default function DoorDesigner() {
                 <span>Perimeter Weather Strip</span>
                 <button
                   type="button"
+                  aria-label="Toggle perimeter weather strip"
                   className={`switch ${config.weatherStrip ? 'on' : ''}`}
                   onClick={() => setConfig((prev) => ({ ...prev, weatherStrip: !prev.weatherStrip }))}
                 >
@@ -955,6 +960,15 @@ export default function DoorDesigner() {
           activeOpeningId={activeOpeningId}
           onSelectOpening={handleSelectOpening}
           theme={theme}
+        />
+      )}
+
+      {projectsOpen && (
+        <ProjectLibrary
+          currentRef={projectRef}
+          onOpenDocument={(doc, ref) => applyStoredProject(doc, ref)}
+          onCurrentRefChange={setProjectRef}
+          onClose={() => setProjectsOpen(false)}
         />
       )}
 
