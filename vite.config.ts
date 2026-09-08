@@ -15,6 +15,16 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
 const localBindingConfig = {
   main: 'vinext/server/fetch-handler',
   compatibility_flags: ['nodejs_compat'],
+  // NEXT_PUBLIC_ only — mirrors your Cloudflare dashboard Variables.
+  // Guarded so a build without .env.local never pushes empty strings and wipes dashboard values.
+  vars: {
+    ...(process.env.NEXT_PUBLIC_SUPABASE_URL
+      ? { NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL }
+      : {}),
+    ...(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      ? { NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY }
+      : {}),
+  },
   d1_databases: d1
     ? [
         {
