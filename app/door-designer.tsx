@@ -149,6 +149,7 @@ export default function DoorDesigner() {
   });
   const [makeStatus, setMakeStatus] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [studioMobileTab, setStudioMobileTab] = useState<'canvas' | 'config' | 'fab'>('canvas');
 
   const handleSelectOpening = (id: string) => {
     setActiveOpeningId(id);
@@ -358,15 +359,21 @@ export default function DoorDesigner() {
     document.documentElement.setAttribute('data-theme', nextTheme);
   };
 
-  const NAV_ITEMS: { key: string; icon: typeof Home; label: string; go: WorkspaceTab }[] = [
-    { key: 'dashboard', icon: Home, label: 'Dashboard', go: 'dashboard' },
-    { key: 'schedule', icon: FileSpreadsheet, label: `Project Schedule (${openings.length})`, go: 'schedule' },
-    { key: 'studio', icon: BoxSelect, label: '3D Studio', go: 'studio' },
-    { key: 'cad', icon: Compass, label: '2D Vector CAD', go: 'cad' },
-    { key: 'nesting', icon: Scissors, label: `1D Nesting & Labels (${projectNesting.totalBarsToPull} bars)`, go: 'nesting' },
-    { key: 'quote', icon: DollarSign, label: 'Commercial Quote & BOM', go: 'quote' },
-    { key: 'audit', icon: FileCheck2, label: 'Fabricator Audit (PDF)', go: 'audit' },
+  const NAV_ITEMS: { key: string; icon: typeof Home; label: string; short: string; go: WorkspaceTab }[] = [
+    { key: 'dashboard', icon: Home, label: 'Dashboard', short: 'Home', go: 'dashboard' },
+    { key: 'schedule', icon: FileSpreadsheet, label: `Project Schedule (${openings.length})`, short: 'Schedule', go: 'schedule' },
+    { key: 'studio', icon: BoxSelect, label: '3D Studio', short: 'Studio', go: 'studio' },
+    { key: 'cad', icon: Compass, label: '2D Vector CAD', short: 'CAD', go: 'cad' },
+    { key: 'nesting', icon: Scissors, label: `1D Nesting & Labels (${projectNesting.totalBarsToPull} bars)`, short: 'Nesting', go: 'nesting' },
+    { key: 'quote', icon: DollarSign, label: 'Commercial Quote & BOM', short: 'Quote', go: 'quote' },
+    { key: 'audit', icon: FileCheck2, label: 'Fabricator Audit (PDF)', short: 'Audit', go: 'audit' },
   ];
+
+  const goToTab = (tab: WorkspaceTab) => {
+    setActiveTab(tab);
+    // Switching sections should always start at the top of the new view.
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  };
 
   // Register AI Tools for document.modelContext
   useEffect(() => {
@@ -433,7 +440,7 @@ export default function DoorDesigner() {
               <button
                 key={item.key}
                 className={`tab-item ${isActive ? 'active' : ''}`}
-                onClick={() => setActiveTab(item.go)}
+                onClick={() => goToTab(item.go)}
                 title={item.label}
                 style={{ flexShrink: 0 }}
               >
@@ -542,7 +549,39 @@ export default function DoorDesigner() {
       {/* 1. 3D STUDIO TAB                                                          */}
       {/* ========================================================================= */}
       {activeTab === 'studio' && (
-        <div className={`workspace ${showConfig ? '' : 'cfg-off'} ${showFab ? '' : 'fab-off'}`}>
+        <>
+          {/* Mobile sub-navigation switcher for 3D Studio (< 1081px) */}
+          <div className="studio-mobile-switcher">
+            <button
+              type="button"
+              className={`studio-mobile-btn ${studioMobileTab === 'canvas' ? 'active' : ''}`}
+              onClick={() => setStudioMobileTab('canvas')}
+            >
+              <BoxSelect size={14} />
+              <span>3D Canvas</span>
+            </button>
+            <button
+              type="button"
+              className={`studio-mobile-btn ${studioMobileTab === 'config' ? 'active' : ''}`}
+              onClick={() => setStudioMobileTab('config')}
+            >
+              <Compass size={14} />
+              <span>Parameters</span>
+            </button>
+            <button
+              type="button"
+              className={`studio-mobile-btn ${studioMobileTab === 'fab' ? 'active' : ''}`}
+              onClick={() => setStudioMobileTab('fab')}
+            >
+              <Scissors size={14} />
+              <span>Cut List</span>
+            </button>
+          </div>
+
+          <div
+            className={`workspace ${showConfig ? '' : 'cfg-off'} ${showFab ? '' : 'fab-off'}`}
+            data-mobile-tab={studioMobileTab}
+          >
           {/* Left Parameter Controls Panel */}
           {showConfig && (
           <aside className="panel panel-left">
@@ -622,112 +661,152 @@ export default function DoorDesigner() {
               </div>
 
               <button className="make-door" onClick={makeDoor}>
-                <Hammer size={16} /> Update 3D Geometry
+                <Hammer size={15} /> Apply Dimensions
               </button>
-              {makeStatus && (
-                <div className={`make-status ${makeStatus.startsWith('Built') ? 'ok' : 'error'}`} style={{ marginTop: 8, textAlign: 'center' }}>
-                  {makeStatus}
-                </div>
-              )}
+              <div className={`make-status ${makeStatus.startsWith('Built') ? 'ok' : makeStatus ? 'error' : ''}`}>
+                {makeStatus}
+              </div>
             </section>
 
             <section className="section">
-              <h2 className="section-title">SYSTEM TYPOLOGY</h2>
-              <select
-                className="select"
-                value={config.system || '100D-single'}
-                onChange={(e) => update('system', e.target.value as TypologyId)}
-              >
-                <option value="100D-single">100 mm Single Swing Door</option>
-                <option value="100D-double">100 mm Double Swing Door</option>
-                <option value="100S-sliding-2p">100 mm Advance 2-Panel Slider (SD Series)</option>
-                <option value="70S-sliding-2p">70S 2-Track 2-Panel Slider</option>
-                <option value="70S-sliding-4p">70S 2-Track 4-Panel Slider (OXXO)</option>
-                <option value="74-cgroove">74 mm C-Groove Slider</option>
-                <option value="casement">Casement / Projected Window</option>
-              </select>
-            </section>
+              <h2 className="section-title">TYPOLOGY & PROFILE SYSTEM</h2>
+              <div className="field" style={{ marginBottom: 12 }}>
+                <label htmlFor="system">Profile Series</label>
+                <select
+                  id="system"
+                  className="select"
+                  value={config.system}
+                  onChange={(e) => update('system', e.target.value as TypologyId)}
+                >
+                  <option value="100D-single">100D Single Door (100mm Frame)</option>
+                  <option value="100D-double">100D Double Swing Door (100mm Frame)</option>
+                  <option value="100S-sliding-2p">100S 2-Track Heavy Sliding Door</option>
+                  <option value="70S-sliding-2p">70S 2-Track Slim Sliding Window/Door</option>
+                  <option value="70S-sliding-4p">70S 4-Panel Center Open Slider</option>
+                  <option value="74-cgroove">74-C Commercial Groove Door</option>
+                  <option value="casement">Casement Window System</option>
+                </select>
+              </div>
 
-            <section className="section">
-              <h2 className="section-title">HANDING & FINISH</h2>
               <div className="field-grid">
                 <div className="field">
-                  <label htmlFor="handing">Hinge / Slide</label>
-                  <select
-                    id="handing"
-                    className="select"
-                    value={config.hingeSide}
-                    onChange={(e) => update('hingeSide', e.target.value as DoorConfig['hingeSide'])}
-                  >
-                    <option value="left">Left Hand</option>
-                    <option value="right">Right Hand</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="finish">Finish</label>
+                  <label htmlFor="finish">Anodized Finish</label>
                   <select
                     id="finish"
                     className="select"
                     value={config.finish}
                     onChange={(e) => update('finish', e.target.value as DoorConfig['finish'])}
                   >
-                    <option value="natural">Natural Anodized</option>
-                    <option value="black">Jet Black</option>
-                    <option value="bronze">Bronze</option>
-                    <option value="white">Pure White</option>
+                    <option value="natural">Natural Silver</option>
+                    <option value="bronze">Architectural Bronze</option>
+                    <option value="black">Matt Black Anodized</option>
+                    <option value="powder-white">Powder Coat White</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="glass">Glazing Type</label>
+                  <select
+                    id="glass"
+                    className="select"
+                    value={config.glass || '6mm-clear'}
+                    onChange={(e) => update('glass', e.target.value as DoorConfig['glass'])}
+                  >
+                    <option value="6mm-clear">6mm Clear Toughened</option>
+                    <option value="8mm-tinted">8mm Tinted Glass</option>
+                    <option value="10.38mm-laminated">10.38mm Laminated Safety</option>
+                    <option value="12mm-toughened">12mm Toughened Glass</option>
+                    <option value="24mm-dgu">24mm Double Glazed Unit (DGU)</option>
                   </select>
                 </div>
               </div>
             </section>
 
             <section className="section">
-              <h2 className="section-title">OPERATION & GLASS</h2>
-              <div className="field" style={{ marginBottom: 12 }}>
-                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
-                  <span>Opening Angle</span>
-                  <span className="mono" style={{ fontWeight: 800, color: 'var(--accent-strong)' }}>{config.openingAngle}°</span>
-                </label>
+              <h2 className="section-title">HARDWARE & HINGE SIDE</h2>
+              <div className="field-grid">
+                <div className="field">
+                  <label htmlFor="hingeSide">Hinge / Drive Side</label>
+                  <select
+                    id="hingeSide"
+                    className="select"
+                    value={config.hingeSide}
+                    onChange={(e) => update('hingeSide', e.target.value as 'left' | 'right')}
+                  >
+                    <option value="left">Left Hand Hinge</option>
+                    <option value="right">Right Hand Hinge</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="openingAngle">3D Swing Angle</label>
+                  <div className="range-row" style={{ height: 42 }}>
+                    <input
+                      id="openingAngle"
+                      type="range"
+                      min="0"
+                      max="90"
+                      value={config.openingAngle}
+                      onChange={(e) => setConfig((prev) => ({ ...prev, openingAngle: Number(e.target.value) }))}
+                    />
+                    <span className="range-value">{config.openingAngle}°</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="switch-row">
+                <span>Threshold Weather Seal</span>
+                <button
+                  type="button"
+                  className={`switch ${config.thresholdSeal ? 'on' : ''}`}
+                  onClick={() => setConfig((prev) => ({ ...prev, thresholdSeal: !prev.thresholdSeal }))}
+                >
+                  <span />
+                </button>
+              </div>
+
+              <div className="switch-row">
+                <span>Concealed Overhead Closer</span>
+                <button
+                  type="button"
+                  className={`switch ${config.closer ? 'on' : ''}`}
+                  onClick={() => setConfig((prev) => ({ ...prev, closer: !prev.closer }))}
+                >
+                  <span />
+                </button>
+              </div>
+
+              <div className="switch-row">
+                <span>Perimeter Weather Strip</span>
+                <button
+                  type="button"
+                  className={`switch ${config.weatherStrip ? 'on' : ''}`}
+                  onClick={() => setConfig((prev) => ({ ...prev, weatherStrip: !prev.weatherStrip }))}
+                >
+                  <span />
+                </button>
+              </div>
+            </section>
+
+            <section className="section" style={{ borderBottom: 'none' }}>
+              <h2 className="section-title">EXPLODED ASSEMBLY ANIMATION</h2>
+              <div className="range-row">
                 <input
-                  aria-label="Opening angle"
+                  id="explodeFactor"
                   type="range"
                   min="0"
-                  max="110"
-                  value={config.openingAngle}
-                  onChange={(e) => update('openingAngle', Number(e.target.value))}
-                  style={{ width: '100%', accentColor: 'var(--accent)' }}
+                  max="100"
+                  value={config.explodeFactor}
+                  onChange={(e) => {
+                    const factor = Number(e.target.value);
+                    setConfig((prev) => ({ ...prev, explodeFactor: factor }));
+                    if (factor > 0 && view !== 'exploded') setView('exploded');
+                    if (factor === 0 && view === 'exploded') setView('assembly');
+                  }}
                 />
-              </div>
-              <div className="switch-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Show Glass Panels</span>
-                <button
-                  className={`switch ${config.showGlass ? 'on' : ''}`}
-                  onClick={() => update('showGlass', !config.showGlass)}
-                  aria-label="Toggle glass"
-                  style={{ background: config.showGlass ? 'var(--accent)' : 'var(--edge-strong)', width: 38, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.15s ease' }}
-                >
-                  <span style={{ display: 'block', width: 18, height: 18, borderRadius: '50%', background: '#ffffff', position: 'absolute', top: 2, left: config.showGlass ? 18 : 2, boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'all 0.15s ease' }} />
-                </button>
+                <span className="range-value">{config.explodeFactor}%</span>
               </div>
             </section>
           </aside>
           )}
-
-          {/* Center 3D Studio Viewport */}
-          <div className="viewport-shell">
-            <section className="viewport">
-              <DoorViewer config={config} view={view} setView={setView} theme="dark" />
-            </section>
-            {!showConfig && (
-              <button className="edge-reopen reopen-left" onClick={() => setShowConfig(true)} title="Show configuration panel" aria-label="Show configuration panel">
-                <ChevronsRight size={16} />
-              </button>
-            )}
-            {!showFab && (
-              <button className="edge-reopen reopen-right" onClick={() => setShowFab(true)} title="Show fabrication panel" aria-label="Show fabrication panel">
-                <ChevronsLeft size={16} />
-              </button>
-            )}
-          </div>
 
           {/* Right Fabrication & Checks Panel */}
           {showFab && (
@@ -824,7 +903,8 @@ export default function DoorDesigner() {
           </aside>
           )}
         </div>
-      )}
+      </>
+    )}
 
       {/* ========================================================================= */}
       {/* 2. PROJECT SCHEDULE TAB                                                   */}
@@ -881,6 +961,29 @@ export default function DoorDesigner() {
       {isExportingPdf && (
         <CuttingPlanePrintDocument dossier={manufacturingDossier} />
       )}
+
+      {/* Mobile-only bottom navigation bar (hidden on desktop by CSS). */}
+      <nav className="bottom-nav" aria-label="Workspace sections">
+        <div className="bottom-nav-scroll">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.go;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={`bottom-nav-item ${isActive ? 'active' : ''}`}
+                onClick={() => goToTab(item.go)}
+                aria-current={isActive ? 'page' : undefined}
+                title={item.label}
+              >
+                <Icon size={19} strokeWidth={isActive ? 2.3 : 2} />
+                <span>{item.short}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </main>
   );
 }

@@ -57,7 +57,7 @@ const PANEL: React.CSSProperties = {
   position: 'absolute',
   top: 46,
   right: 0,
-  width: 340,
+  width: 'min(340px, calc(100vw - 24px))',
   maxHeight: 'min(640px, calc(100vh - 70px))',
   overflowY: 'auto',
   background: '#171c23',

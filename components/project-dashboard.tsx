@@ -125,13 +125,13 @@ export default function ProjectDashboard({
     <div className="dashboard-wrapper">
       {/* Project Identity Banner */}
       <div style={{ ...CARD, padding: '20px 22px', marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <FolderKanban size={18} style={{ color: 'var(--accent-strong)' }} />
+        <div style={{ minWidth: 0, flex: '1 1 300px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+            <FolderKanban size={18} style={{ color: 'var(--accent-strong)', flexShrink: 0 }} />
             <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--muted)' }}>ACTIVE PROJECT</span>
             <span className="mono" style={{ fontSize: 11, color: 'var(--accent-strong)', background: 'var(--accent-soft)', padding: '2px 9px', borderRadius: 12, fontWeight: 800 }}>{project.projectNumber || 'NO REF'}</span>
           </div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--ink)' }}>{project.projectName}</h1>
+          <h1 style={{ margin: 0, fontSize: 'clamp(18px, 5vw, 24px)', lineHeight: 1.2, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--ink)', overflowWrap: 'anywhere' }}>{project.projectName}</h1>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px', marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
             <span><b style={{ color: 'var(--ink)' }}>{project.clientName || '—'}</b> · Client</span>
             <span>Date <b className="mono" style={{ color: 'var(--ink)' }}>{project.date}</b></span>
@@ -142,7 +142,7 @@ export default function ProjectDashboard({
             </span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', minWidth: 0, flex: '0 1 auto', justifyContent: 'flex-end' }}>
           {confirmNew ? (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--panel)', border: '1px solid var(--edge)', borderRadius: 9, padding: '4px 6px' }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger)', padding: '0 6px' }}>Start a new project?</span>
@@ -192,7 +192,8 @@ export default function ProjectDashboard({
       </div>
 
       {/* KPI Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
+      {/* KPI Row */}
+      <div className="dash-kpis">
         <KpiCard label="Opening Units" value={String(openings.length)} sub={`${stats.totalUnits} leaves / items`} icon={<Layers size={15} />} tone="#38bdf8" />
         <KpiCard label="Glass Area" value={`${stats.totalGlassM2.toFixed(1)} m²`} sub={`${stats.glassPanels} panels`} icon={<BoxSelect size={15} />} tone="#34d399" />
         <KpiCard label="Aluminium Extrusion" value={`${stats.totalAluKg.toFixed(1)} kg`} sub={`${dossier.totals.cutPieces} cut pieces`} icon={<Weight size={15} />} tone="#a78bfa" />
@@ -201,7 +202,7 @@ export default function ProjectDashboard({
         <KpiCard label="Fabrication Checks" value={`${dossier.checks.length - reviews}/${dossier.checks.length}`} sub={reviews === 0 ? 'All clear to build' : `${reviews} need review`} icon={<ShieldCheck size={15} />} tone={reviews === 0 ? '#34d399' : '#fbbf24'} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+      <div className="dash-split">
         {/* Left column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           {/* Quick add a unit */}

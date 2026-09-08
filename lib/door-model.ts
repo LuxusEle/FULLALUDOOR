@@ -15,6 +15,12 @@ export const doorConfigSchema = z.object({
   quantity: z.number().min(1).default(1),
   glass: z.enum(['6mm-clear', '8mm-tinted', '10.38mm-laminated', '12mm-toughened', '24mm-dgu']).default('6mm-clear'),
   location: z.string().default('Ground Floor'),
+  // Optional hardware/accessory toggles
+  thresholdSeal: z.boolean().default(false),
+  closer: z.boolean().default(false),
+  weatherStrip: z.boolean().default(true),
+  // Exploded view factor 0–100
+  explodeFactor: z.number().min(0).max(100).default(0),
 });
 
 export type DoorConfig = z.infer<typeof doorConfigSchema>;
@@ -32,6 +38,10 @@ export const defaultDoorConfig: DoorConfig = {
   quantity: 1,
   glass: '6mm-clear',
   location: 'Ground Floor',
+  thresholdSeal: false,
+  closer: false,
+  weatherStrip: true,
+  explodeFactor: 0,
 };
 
 export const PROFILE_WEIGHTS: Record<string, { name: string; kgM: number; depth: number; face: number }> = {
