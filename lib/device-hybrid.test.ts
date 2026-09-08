@@ -21,6 +21,7 @@ import {
 import {
   canActOnWindowsDevice,
   gateKindFromPayload,
+  isAdminBypassAccess,
   normalizeDeviceAccessPayload,
   type DeviceAccessPayload,
 } from './device-access';
@@ -264,6 +265,47 @@ describe('scenario simulation — the acceptance model', () => {
     // because no Windows agent can exist there.
     expect(phone('PHONE-DEVICE')).toBe('pending');
     expect(describeClientPlatform('iPhone', 'Mobile').isMobile).toBe(true);
+  });
+});
+
+describe('admin password-only access — non-admins stay device-bound', () => {
+  it('an admin with NO windows agent/device is granted by the server verdict', () => {
+    const adminPayload = normalizeDeviceAccessPayload({
+      ok: true,
+      status: 'approved',
+      role: 'admin',
+      account_status: 'active',
+      binding_mode: 'hybrid_windows',
+      admin_access: true,
+      // no device_id, no device_kind, no attestation fields present
+    });
+    expect(isAdminBypassAccess(adminPayload)).toBe(true);
+    expect(gateKindFromPayload(adminPayload)).toBe('approved');
+  });
+
+  it('an approved normal user (no admin_access) still flows through the device verdict', () => {
+    const userPayload = normalizeDeviceAccessPayload({
+      ok: true,
+      status: 'approved',
+      role: 'user',
+      device_id: DEVICE_ID,
+      device_kind: 'windows_agent',
+      binding_mode: 'hybrid_windows',
+      device_attestation_status: 'attested',
+    });
+    expect(userPayload.adminAccess).toBe(false);
+    expect(isAdminBypassAccess(userPayload)).toBe(false);
+    expect(gateKindFromPayload(userPayload)).toBe('approved');
+  });
+
+  it('a normal user without an approved device stays pending/blocked', () => {
+    const pendingUser = scenario({ 'DEVICE-A': 'approved' });
+    expect(pendingUser('DEVICE-NEW')).toBe('pending');
+  });
+
+  it('a revoked windows device still blocks a non-admin', () => {
+    const revokedUser = scenario({ 'DEVICE-A': 'revoked' });
+    expect(revokedUser('DEVICE-A')).toBe('revoked');
   });
 });
 

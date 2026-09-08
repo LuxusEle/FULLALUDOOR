@@ -21,7 +21,7 @@ import type { ReactNode } from 'react';
 import { isDemoAuth, signOutCurrentUser, subscribeToAuth } from '../../lib/auth';
 import type { SupabaseUser } from '../../lib/supabase';
 import type { AccessGateKind, DeviceAccessPayload, UserRole } from '../../lib/device-access';
-import { gateKindFromPayload, isHybridWindowsPayload } from '../../lib/device-access';
+import { gateKindFromPayload, isAdminBypassAccess, isHybridWindowsPayload } from '../../lib/device-access';
 import {
   attestWindowsDevice,
   bootstrapFirstAdmin,
@@ -147,6 +147,14 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
         setPayload(result);
         setAgentError(null);
 
+        // Active administrators: the database grants password-only access
+        // (admin_access=true) on ANY device/browser. Grant immediately — no
+        // Windows agent, enrollment or attestation is required for them.
+        if (isAdminBypassAccess(result)) {
+          setGate('approved');
+          return;
+        }
+
         // Non-approved / explicit states.
         if (result.status === 'agent_required') {
           if (!info && !platform.isWindows) {
@@ -192,6 +200,13 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
       const result = await checkDeviceAccess();
       setPayload(result);
       const kind = gateKindFromPayload(result);
+
+      // Admin sessions re-validate on the same cadence; grant without touching
+      // the Windows agent / attestation path.
+      if (isAdminBypassAccess(result)) {
+        setGate('approved');
+        return;
+      }
       if (result.status === 'approved' && isHybridWindowsPayload(result)) {
         const info = agentInfo;
         if (!info) {

@@ -6,6 +6,7 @@ import {
   gateKindFromPayload,
   generateDeviceId,
   generateDeviceToken,
+  isAdminBypassAccess,
   normalizeDeviceAccessPayload,
   type DeviceAccessPayload,
 } from './device-access';
@@ -122,6 +123,48 @@ describe('normalizeDeviceAccessPayload', () => {
   it('rejects a payload with an unknown status string', () => {
     const payload = normalizeDeviceAccessPayload({ ok: true, status: 'approved-by-pass', role: 'admin' });
     expect(payload.status).toBeUndefined();
+  });
+
+  it('maps the server-declared admin password-only verdict', () => {
+    const payload = normalizeDeviceAccessPayload({
+      ok: true,
+      status: 'approved',
+      role: 'admin',
+      account_status: 'active',
+      binding_mode: 'hybrid_windows',
+      admin_access: true,
+    });
+    expect(payload.status).toBe('approved');
+    expect(payload.role).toBe('admin');
+    expect(payload.adminAccess).toBe(true);
+    expect(isAdminBypassAccess(payload)).toBe(true);
+  });
+});
+
+describe('isAdminBypassAccess — a client can never fabricate admin access', () => {
+  it('requires the server admin_access verdict', () => {
+    const serverAdmin: DeviceAccessPayload = {
+      ok: true,
+      status: 'approved',
+      role: 'admin',
+      adminAccess: true,
+    };
+    expect(isAdminBypassAccess(serverAdmin)).toBe(true);
+  });
+
+  it('is false when admin_access is absent (normal approved device flow)', () => {
+    const approvedUser: DeviceAccessPayload = { ok: true, status: 'approved', role: 'admin', adminAccess: false };
+    expect(isAdminBypassAccess(approvedUser)).toBe(false);
+  });
+
+  it('is false for a non-approved status even when role is admin', () => {
+    const pendingAdmin: DeviceAccessPayload = { ok: true, status: 'pending', role: 'admin', adminAccess: true };
+    expect(isAdminBypassAccess(pendingAdmin)).toBe(false);
+  });
+
+  it('is false for a user role even when admin_access is set', () => {
+    const userClaim: DeviceAccessPayload = { ok: true, status: 'approved', role: 'user', adminAccess: true };
+    expect(isAdminBypassAccess(userClaim)).toBe(false);
   });
 });
 
