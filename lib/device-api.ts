@@ -38,7 +38,7 @@ import {
   resolveDeviceBindingMode,
 } from './device-config';
 
-export type AdminDeviceAction = 'approve' | 'reject' | 'revoke' | 'pending' | 'reenroll';
+export type AdminDeviceAction = 'approve' | 'reject' | 'revoke' | 'pending' | 'reenroll' | 'delete';
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -661,6 +661,25 @@ export async function performAdminSetUserStatus(
   return {
     ok: true,
     data: { status: pickString(record, 'status') ?? status },
+  };
+}
+
+/** Permanently deletes a device enrollment (admin RPC admin_delete_device). */
+export async function performAdminDeleteDevice(deviceId: string): Promise<RpcResult<AdminActionResult>> {
+  if (isDemoMode) return { ok: false, message: 'Demo mode has no administration.' };
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.rpc('admin_delete_device', {
+    p_token: await protectedRpcCredential(),
+    p_device_id: deviceId,
+  });
+  if (error) return { ok: false, message: friendlyRpcError(error) };
+  const record = isRecord(data) ? data : {};
+  return {
+    ok: true,
+    data: {
+      status: pickString(record, 'status') ?? 'unknown',
+      action: pickString(record, 'action') ?? undefined,
+    },
   };
 }
 

@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Search,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import { canActOnWindowsDevice, attestationStatusLabel } from '../../lib/device-access';
 import {
@@ -24,6 +25,7 @@ import {
   fetchAdminDevices,
   fetchAdminSettings,
   fetchAdminUsers,
+  performAdminDeleteDevice,
   performAdminDeviceAction,
   performAdminSetBindingMode,
   performAdminSetMaxDevices,
@@ -48,6 +50,7 @@ const ACTION_META: Record<string, { label: string; tone: 'approve' | 'reject' | 
   revoke: { label: 'Revoke', tone: 'revoke' },
   pending: { label: 'Reopen', tone: 'neutral' },
   reenroll: { label: 'Re-enroll', tone: 'revoke' },
+  delete: { label: 'Delete', tone: 'reject' },
 };
 
 const STATUS_CLASS: Record<AdminDeviceRecord['status'], string> = {
@@ -129,7 +132,10 @@ export default function AdminDevicePanel() {
     setBusyDeviceId(target.id);
     setError(null);
     setNotice(null);
-    const result = await performAdminDeviceAction(target.id, target.action);
+    const result =
+      target.action === 'delete'
+        ? await performAdminDeleteDevice(target.id)
+        : await performAdminDeviceAction(target.id, target.action);
     setBusyDeviceId(null);
     if (!result.ok) {
       setError(result.message);
@@ -211,6 +217,9 @@ export default function AdminDevicePanel() {
   }, [devices, filter, query]);
 
   const canAct = (device: AdminDeviceRecord, action: AdminDeviceAction): boolean => {
+    if (action === 'delete') {
+      return true;
+    }
     if (action === 'reenroll') {
       return device.deviceKind === 'windows_agent';
     }
@@ -315,7 +324,7 @@ export default function AdminDevicePanel() {
                       busy={busyDeviceId === device.id}
                       onToggle={() => setExpandedId(expandedId === device.id ? null : device.id)}
                       onAct={(action) => {
-                        if (action === 'reject' || action === 'revoke' || action === 'reenroll') {
+                        if (action === 'reject' || action === 'revoke' || action === 'reenroll' || action === 'delete') {
                           setConfirm({ device, action });
                           return;
                         }
@@ -473,17 +482,17 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
   const isWindows = device.deviceKind === 'windows_agent';
   const actions: AdminDeviceAction[] = isWindows
     ? device.status === 'pending'
-      ? ['approve', 'reject', 'reenroll']
+      ? ['approve', 'reject', 'reenroll', 'delete']
       : device.status === 'approved'
-        ? ['revoke', 'reenroll']
-        : ['approve', 'pending', 'reenroll']
+        ? ['revoke', 'reenroll', 'delete']
+        : ['approve', 'pending', 'reenroll', 'delete']
     : device.status === 'pending'
-      ? ['approve', 'reject']
+      ? ['approve', 'reject', 'delete']
       : device.status === 'approved'
-        ? ['revoke']
+        ? ['revoke', 'delete']
         : device.status === 'rejected'
-          ? ['approve', 'pending']
-          : ['approve', 'pending'];
+          ? ['approve', 'pending', 'delete']
+          : ['approve', 'pending', 'delete'];
 
   return (
     <>
@@ -534,7 +543,7 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
               <div className="admin-cell-sub">{device.deviceKeyAlgorithm ?? '—'}</div>
             </>
           ) : (
-            <span className="admin-cell-sub">legacy</span>
+            <span className="admin-cell-sub">—</span>
           )}
         </td>
         <td>
@@ -559,7 +568,16 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
             {actions.map((action) => {
               if (!canAct(device, action)) return null;
               const meta = ACTION_META[action];
-              const Icon = action === 'approve' ? Check : action === 'reject' ? Ban : action === 'reenroll' ? RotateCcw : RotateCcw;
+              const Icon =
+                action === 'approve'
+                  ? Check
+                  : action === 'reject'
+                    ? Ban
+                    : action === 'delete'
+                      ? Trash2
+                      : action === 'reenroll' || action === 'pending'
+                        ? RotateCcw
+                        : Ban;
               return (
                 <button
                   key={action}
@@ -581,7 +599,7 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
         <tr>
           <td colSpan={12} aria-label="Device details" style={{ background: '#10151b', padding: '12px 18px' }}>
             <div className="admin-detail-grid">
-              <div className="row"><span>Device kind</span><span>{isWindows ? 'Windows Device Agent' : 'Legacy browser'}</span></div>
+              <div className="row"><span>Device kind</span><span>{isWindows ? 'Windows Device Agent' : 'Browser device'}</span></div>
               <div className="row"><span>Device ID</span><span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5 }}>{device.deviceIdentifier ?? '—'}</span></div>
               <div className="row"><span>User ID</span><span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5 }}>{device.userId}</span></div>
               <div className="row"><span>Platform / OS</span><span>{[device.platform, device.osVersion].filter(Boolean).join(' / ') || device.operatingSystem || '—'}</span></div>
@@ -640,12 +658,19 @@ function ConfirmDialog({ device, action, busy, onCancel, onConfirm }: ConfirmDia
               confirmLabel: 'Force re-enrollment',
               tone: 'admin-action-revoke',
             }
-          : {
-              title: 'Reopen this device?',
-              body: `${device.deviceName} will return to pending review.`,
-              confirmLabel: 'Reopen device',
-              tone: '',
-            };
+          : action === 'delete'
+            ? {
+                title: 'Delete this device?',
+                body: `${device.deviceName} will be permanently deleted from the approval pool. The user immediately loses access from this device and must register it again on their next login, then wait for a new approval. This cannot be undone.`,
+                confirmLabel: 'Delete device',
+                tone: 'admin-action-reject',
+              }
+            : {
+                title: 'Reopen this device?',
+                body: `${device.deviceName} will return to pending review.`,
+                confirmLabel: 'Reopen device',
+                tone: '',
+              };
 
   return (
     <dialog open aria-label={copy.title} className="admin-confirm-overlay" style={{ border: 'none', background: 'transparent', padding: 0, maxWidth: 'none' }}>
