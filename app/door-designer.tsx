@@ -20,7 +20,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
-import Link from 'next/link';
 import ProjectSchedule from '../components/project-schedule';
 import VectorCadDrawings from '../components/vector-cad-drawings';
 import NestingView from '../components/nesting-view';
@@ -505,14 +504,15 @@ export default function DoorDesigner() {
             <Save size={14} /> <span className="btn-txt">Export PDF</span>
           </button>
           {accessRole === 'admin' && (
-            <Link
+            // eslint-disable-next-line next/no-html-link-for-pages -- full-page navigation to /admin is required: vinext RSC <Link> client-navigation crashes in production builds (TypeError e/f is not a function during startTransition).
+            <a
               href="/admin"
               className="btn"
               title="Approve and manage user devices"
-              style={{ flexShrink: 0, whiteSpace: 'nowrap', textDecoration: 'none' }}
+              style={{ flexShrink: 0, whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
             >
               <Shield size={14} /> <span className="btn-txt">Admin</span>
-            </Link>
+            </a>
           )}
           <CloudProjectPanel
             project={project}
