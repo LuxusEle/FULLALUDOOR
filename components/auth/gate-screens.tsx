@@ -159,7 +159,7 @@ const STATUS_COPY: Record<StatusTone, { pill: string; pillClass: string; heading
     pillClass: 'gate-pill-pending',
     heading: 'Device approval required',
     lead:
-      'Your account is authenticated. This Windows computer has been registered and is waiting for an administrator to approve it. The workspace stays locked until the device is approved.',
+      'Your account is authenticated. This device has been registered and is waiting for an administrator to approve it. The workspace stays locked until the device is approved.',
   },
   denied: {
     pill: 'REJECTED',
