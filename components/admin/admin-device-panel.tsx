@@ -19,13 +19,14 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
-import { canTransitionDevice } from '../../lib/device-access';
+import { canActOnWindowsDevice, attestationStatusLabel } from '../../lib/device-access';
 import {
   fetchAdminCounts,
   fetchAdminDevices,
   fetchAdminSettings,
   fetchAdminUsers,
   performAdminDeviceAction,
+  performAdminSetBindingMode,
   performAdminSetMaxDevices,
   performAdminSetUserStatus,
   type AdminCounts,
@@ -47,6 +48,7 @@ const ACTION_META: Record<string, { label: string; tone: 'approve' | 'reject' | 
   reject: { label: 'Reject', tone: 'reject' },
   revoke: { label: 'Revoke', tone: 'revoke' },
   pending: { label: 'Reopen', tone: 'neutral' },
+  reenroll: { label: 'Re-enroll', tone: 'revoke' },
 };
 
 const STATUS_CLASS: Record<AdminDeviceRecord['status'], string> = {
@@ -69,6 +71,8 @@ export default function AdminDevicePanel() {
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [maxDevices, setMaxDevices] = useState('0');
   const [settingsDraft, setSettingsDraft] = useState('0');
+  const [bindingMode, setBindingMode] = useState('hybrid_windows');
+  const [bindingModeBusy, setBindingModeBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -105,6 +109,8 @@ export default function AdminDevicePanel() {
     if (settingsResult.ok) {
       setMaxDevices(settingsResult.data.max_approved_devices ?? '0');
       setSettingsDraft(settingsResult.data.max_approved_devices ?? '0');
+      const mode = settingsResult.data.device_binding_mode;
+      if (mode === 'hybrid_windows' || mode === 'browser_legacy') setBindingMode(mode);
     }
   }, []);
 
@@ -166,6 +172,21 @@ export default function AdminDevicePanel() {
     setNotice('Policy updated.');
   };
 
+  const saveBindingMode = async (next: string) => {
+    setBindingModeBusy(true);
+    setError(null);
+    setNotice(null);
+    const result = await performAdminSetBindingMode(next);
+    setBindingModeBusy(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setBindingMode(result.data.status ?? next);
+    setNotice('Device binding mode updated. The change is enforced server-side on the next access check.');
+    void refreshAll();
+  };
+
   const handleSignOut = async () => {
     await signOut();
   };
@@ -190,8 +211,12 @@ export default function AdminDevicePanel() {
     });
   }, [devices, filter, query]);
 
-  const canAct = (device: AdminDeviceRecord, action: AdminDeviceAction): boolean =>
-    canTransitionDevice(device.status, action);
+  const canAct = (device: AdminDeviceRecord, action: AdminDeviceAction): boolean => {
+    if (action === 'reenroll') {
+      return device.deviceKind === 'windows_agent';
+    }
+    return canActOnWindowsDevice(device.status, action);
+  };
 
   return (
     <div className="admin-page">
@@ -269,14 +294,17 @@ export default function AdminDevicePanel() {
                 <thead>
                   <tr>
                     <th aria-label="Details" style={{ width: 30 }} />
+                    <th>Kind</th>
                     <th>User</th>
                     <th>Device</th>
                     <th>Browser</th>
-                    <th>OS</th>
+                    <th>Platform / OS</th>
+                    <th>Agent</th>
+                    <th>Attestation</th>
                     <th>Status</th>
                     <th>Registered</th>
                     <th>Last seen</th>
-                    <th style={{ width: 150 }}>Actions</th>
+                    <th style={{ width: 170 }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -288,7 +316,7 @@ export default function AdminDevicePanel() {
                       busy={busyDeviceId === device.id}
                       onToggle={() => setExpandedId(expandedId === device.id ? null : device.id)}
                       onAct={(action) => {
-                        if (action === 'reject' || action === 'revoke') {
+                        if (action === 'reject' || action === 'revoke' || action === 'reenroll') {
                           setConfirm({ device, action });
                           return;
                         }
@@ -329,6 +357,24 @@ export default function AdminDevicePanel() {
               Each account can hold up to {maxDevices} approved {maxDevices === '1' ? 'device' : 'devices'}. Additional approvals are rejected.
             </div>
           )}
+          <div style={{ padding: '14px 18px', borderTop: '1px solid #242b33', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: '#8b96a5', fontSize: 12 }}>Device binding mode</span>
+            <select
+              className="admin-search"
+              style={{ width: 200 }}
+              value={bindingMode}
+              disabled={bindingModeBusy}
+              aria-label="Device binding mode"
+              onChange={(event) => void saveBindingMode(event.target.value)}
+            >
+              <option value="hybrid_windows">hybrid_windows (default)</option>
+              <option value="browser_legacy">browser_legacy (compat)</option>
+            </select>
+            {bindingModeBusy && <Loader2 size={13} className="spin" />}
+            <span style={{ color: '#6b7683', fontSize: 11 }}>
+              hybrid_windows requires the native agent + admin approval per Windows computer.
+            </span>
+          </div>
         </div>
 
         <div className="admin-panel">
@@ -425,8 +471,14 @@ interface DeviceRowProps {
 }
 
 function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRowProps) {
-  const actions: AdminDeviceAction[] =
-    device.status === 'pending'
+  const isWindows = device.deviceKind === 'windows_agent';
+  const actions: AdminDeviceAction[] = isWindows
+    ? device.status === 'pending'
+      ? ['approve', 'reject', 'reenroll']
+      : device.status === 'approved'
+        ? ['revoke', 'reenroll']
+        : ['approve', 'pending', 'reenroll']
+    : device.status === 'pending'
       ? ['approve', 'reject']
       : device.status === 'approved'
         ? ['revoke']
@@ -443,6 +495,11 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
           </button>
         </td>
         <td>
+          <span className={`admin-status-badge ${isWindows ? 'admin-status-pending' : ''}`} style={!isWindows ? { color: '#9aa5b1', background: 'rgba(148,163,184,0.12)' } : undefined}>
+            {isWindows ? 'Windows' : 'Browser'}
+          </span>
+        </td>
+        <td>
           <div className="admin-cell-main">{device.email ?? 'Unknown user'}</div>
           {device.userStatus === 'disabled' && <div className="admin-cell-sub">account disabled</div>}
         </td>
@@ -450,8 +507,49 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
           <div className="admin-cell-main">{device.deviceName}</div>
           <div className="admin-cell-sub">{device.deviceIdentifier?.slice(0, 8) ?? ''}…</div>
         </td>
-        <td>{device.browser ?? '—'}</td>
-        <td>{device.operatingSystem ?? '—'}</td>
+        <td>
+          {isWindows ? (
+            device.detectedBrowsers.length > 0 ? (
+              <span className="admin-cell-main">{device.detectedBrowsers.join(', ')}</span>
+            ) : (
+              <span className="admin-cell-sub">—</span>
+            )
+          ) : (
+            device.browser ?? '—'
+          )}
+        </td>
+        <td>
+          {isWindows ? (
+            <>
+              <div className="admin-cell-main">{device.platform ?? 'Windows'}</div>
+              <div className="admin-cell-sub">{device.osVersion ?? device.operatingSystem ?? '—'}</div>
+            </>
+          ) : (
+            device.operatingSystem ?? '—'
+          )}
+        </td>
+        <td>
+          {isWindows ? (
+            <>
+              <div className="admin-cell-main">v{device.agentVersion ?? '?'}</div>
+              <div className="admin-cell-sub">{device.deviceKeyAlgorithm ?? '—'}</div>
+            </>
+          ) : (
+            <span className="admin-cell-sub">legacy</span>
+          )}
+        </td>
+        <td>
+          {isWindows ? (
+            <>
+              <span className="admin-cell-main" style={device.deviceAttestationStatus === 'attested' ? { color: '#6ee7b7' } : device.deviceAttestationStatus === 'failed' || device.deviceAttestationStatus === 're_enrollment_required' ? { color: '#fca5a5' } : undefined}>
+                {attestationStatusLabel(device.deviceAttestationStatus)}
+              </span>
+              <div className="admin-cell-sub">{formatDate(device.lastAttestedAt)}</div>
+            </>
+          ) : (
+            <span className="admin-cell-sub">—</span>
+          )}
+        </td>
         <td>
           <span className={`admin-status-badge ${STATUS_CLASS[device.status]}`}>{device.status}</span>
         </td>
@@ -462,7 +560,7 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
             {actions.map((action) => {
               if (!canAct(device, action)) return null;
               const meta = ACTION_META[action];
-              const Icon = action === 'approve' ? Check : action === 'reject' ? Ban : action === 'revoke' ? RotateCcw : RotateCcw;
+              const Icon = action === 'approve' ? Check : action === 'reject' ? Ban : action === 'reenroll' ? RotateCcw : RotateCcw;
               return (
                 <button
                   key={action}
@@ -482,16 +580,28 @@ function DeviceRow({ device, expanded, busy, onToggle, onAct, canAct }: DeviceRo
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={9} aria-label="Device details" style={{ background: '#10151b', padding: '12px 18px' }}>
+          <td colSpan={12} aria-label="Device details" style={{ background: '#10151b', padding: '12px 18px' }}>
             <div className="admin-detail-grid">
+              <div className="row"><span>Device kind</span><span>{isWindows ? 'Windows Device Agent' : 'Legacy browser'}</span></div>
               <div className="row"><span>Device ID</span><span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5 }}>{device.deviceIdentifier ?? '—'}</span></div>
               <div className="row"><span>User ID</span><span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5 }}>{device.userId}</span></div>
+              <div className="row"><span>Platform / OS</span><span>{[device.platform, device.osVersion].filter(Boolean).join(' / ') || device.operatingSystem || '—'}</span></div>
+              <div className="row"><span>Agent version</span><span>{device.agentVersion ? `v${device.agentVersion}` : '—'}</span></div>
+              <div className="row"><span>Key algorithm</span><span>{device.deviceKeyAlgorithm ?? '—'}</span></div>
+              <div className="row"><span>Attestation status</span><span>{attestationStatusLabel(device.deviceAttestationStatus)}</span></div>
+              <div className="row"><span>Last attested</span><span>{formatDate(device.lastAttestedAt)}</span></div>
+              {isWindows && device.devicePublicKey && (
+                <div className="row"><span>Public key</span><span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, wordBreak: 'break-all' }}>{device.devicePublicKey}</span></div>
+              )}
               <div className="row"><span>User agent</span><span>{device.userAgent ?? '—'}</span></div>
               <div className="row"><span>Registered</span><span>{formatDate(device.registeredAt)}</span></div>
               <div className="row"><span>Last seen</span><span>{formatDate(device.lastSeenAt)}</span></div>
               <div className="row"><span>Approved</span><span>{device.approvedAt ? `${formatDate(device.approvedAt)}${device.approvedByEmail ? ` by ${device.approvedByEmail}` : ''}` : '—'}</span></div>
               <div className="row"><span>Rejected</span><span>{formatDate(device.rejectedAt)}</span></div>
               <div className="row"><span>Revoked</span><span>{formatDate(device.revokedAt)}</span></div>
+              {isWindows && (
+                <div className="row"><span>Browsers detected</span><span>{device.detectedBrowsers.length ? device.detectedBrowsers.join(', ') : '—'}</span></div>
+              )}
             </div>
           </td>
         </tr>
@@ -513,7 +623,7 @@ function ConfirmDialog({ device, action, busy, onCancel, onConfirm }: ConfirmDia
     action === 'revoke'
       ? {
           title: 'Revoke this device?',
-          body: `The user will immediately lose access from ${device.deviceName}. The server blocks the next authorization check.`,
+          body: `The user will immediately lose access from ${device.deviceName}. The server blocks every browser on this Windows device at the next authorization check.`,
           confirmLabel: 'Revoke device',
           tone: 'admin-action-revoke',
         }
@@ -524,12 +634,19 @@ function ConfirmDialog({ device, action, busy, onCancel, onConfirm }: ConfirmDia
             confirmLabel: 'Reject device',
             tone: 'admin-action-reject',
           }
-        : {
-            title: 'Reopen this device?',
-            body: `${device.deviceName} will return to pending review.`,
-            confirmLabel: 'Reopen device',
-            tone: '',
-          };
+        : action === 'reenroll'
+          ? {
+              title: 'Force re-enrollment?',
+              body: `The stored public key of ${device.deviceName} will be invalidated and the device revoked. The user must re-enroll the Windows Device Agent (generating a brand new device identity) before access can be approved again.`,
+              confirmLabel: 'Force re-enrollment',
+              tone: 'admin-action-revoke',
+            }
+          : {
+              title: 'Reopen this device?',
+              body: `${device.deviceName} will return to pending review.`,
+              confirmLabel: 'Reopen device',
+              tone: '',
+            };
 
   return (
     <dialog open aria-label={copy.title} className="admin-confirm-overlay" style={{ border: 'none', background: 'transparent', padding: 0, maxWidth: 'none' }}>

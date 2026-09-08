@@ -19,9 +19,19 @@ export type DeviceAccessStatus =
   | DeviceStatus
   | 'account_disabled'
   | 'missing_device_token'
+  | 'agent_required'
+  | 'not_registered'
+  | 'invalid_proof'
+  | 're_enrollment_required'
   | 'unauthenticated';
 
-/** Normalized result returned by the database after a login-time device check. */
+export type BindingModeLike = 'hybrid_windows' | 'browser_legacy';
+
+/**
+ * Normalized result returned by the database after a login-time device check.
+ * Client state can never make this report an approval the database did not
+ * issue.
+ */
 export interface DeviceAccessPayload {
   ok: boolean;
   status?: DeviceAccessStatus;
@@ -30,10 +40,20 @@ export interface DeviceAccessPayload {
   deviceName?: string | null;
   registeredAt?: string | null;
   accountStatus?: AccountStatus | null;
+  bindingMode?: BindingModeLike | null;
+  deviceKind?: 'windows_agent' | 'browser' | null;
+  attestationStatus?: string | null;
+  lastAttestedAt?: string | null;
   error?: string | null;
 }
 
-/** Stable, serializable identity persisted in this browser. */
+/**
+ * Stable, serializable identity persisted in this browser.
+ *
+ * LEGACY LAYER — under the default hybrid_windows binding mode this identity
+ * is NOT used for authorization. It is retained as the explicit
+ * browser_legacy compatibility path only.
+ */
 export interface DeviceIdentity {
   deviceId: string;
   token: string;
@@ -48,6 +68,13 @@ export interface DeviceMetadata {
 }
 
 export const DEVICE_IDENTITY_STORAGE_KEY = 'fullaludoor.device-identity.v1';
+
+/**
+ * Storage key for the *server-approved binding mode of the last access check*.
+ * Stored so the UI can render the correct screen before the next network round
+ * trip, but the database is always re-consulted before any authorization.
+ */
+export const DEVICE_BINDING_MODE_STORAGE_KEY = 'fullaludoor.binding-mode.v1';
 
 // ---------------------------------------------------------------------------
 // Secure random generation (Web Crypto; never Math.random for secrets)
@@ -220,6 +247,26 @@ function isRole(value: unknown): value is UserRole {
   return value === 'admin' || value === 'user';
 }
 
+function isAccessStatus(value: unknown): value is Exclude<DeviceAccessStatus, DeviceStatus> {
+  return (
+    value === 'account_disabled' ||
+    value === 'missing_device_token' ||
+    value === 'agent_required' ||
+    value === 'not_registered' ||
+    value === 'invalid_proof' ||
+    value === 're_enrollment_required' ||
+    value === 'unauthenticated'
+  );
+}
+
+function isBindingMode(value: unknown): value is BindingModeLike {
+  return value === 'hybrid_windows' || value === 'browser_legacy';
+}
+
+function isDeviceKind(value: unknown): value is 'windows_agent' | 'browser' {
+  return value === 'windows_agent' || value === 'browser';
+}
+
 /** Converts the raw JSON returned by the get_device_access RPC into a typed payload. */
 export function normalizeDeviceAccessPayload(payload: unknown): DeviceAccessPayload {
   if (!isRecord(payload)) {
@@ -230,9 +277,10 @@ export function normalizeDeviceAccessPayload(payload: unknown): DeviceAccessPayl
   const error = asString(payload.error);
 
   const rawStatus = asString(payload.status);
-  const status: DeviceAccessStatus | undefined = isDeviceStatus(rawStatus) || rawStatus === 'account_disabled'
-    ? (rawStatus as DeviceAccessStatus)
-    : undefined;
+  const status: DeviceAccessStatus | undefined =
+    isDeviceStatus(rawStatus) || isAccessStatus(rawStatus)
+      ? (rawStatus as DeviceAccessStatus)
+      : undefined;
 
   const rawRole = payload.role;
   const role = isRole(rawRole) ? rawRole : null;
@@ -245,6 +293,10 @@ export function normalizeDeviceAccessPayload(payload: unknown): DeviceAccessPayl
     deviceName: asString(payload.device_name),
     registeredAt: asString(payload.registered_at),
     accountStatus: payload.account_status === 'disabled' ? 'disabled' : 'active',
+    bindingMode: isBindingMode(payload.binding_mode) ? payload.binding_mode : null,
+    deviceKind: isDeviceKind(payload.device_kind) ? payload.device_kind : null,
+    attestationStatus: asString(payload.device_attestation_status),
+    lastAttestedAt: asString(payload.last_attested_at),
     error,
   };
 }
@@ -267,8 +319,16 @@ export function gateKindFromPayload(payload: DeviceAccessPayload): AccessGateKin
       return 'denied';
     case 'revoked':
       return 'revoked';
+    case 're_enrollment_required':
+      return 'revoked';
     case 'account_disabled':
       return 'disabled';
+    case 'agent_required':
+      return 'agent_required';
+    case 'invalid_proof':
+      return 'error';
+    case 'not_registered':
+      return 'pending';
     default:
       return payload.error === 'missing_device_token' ? 'error' : 'login';
   }
@@ -281,7 +341,16 @@ export type AccessGateKind =
   | 'denied'
   | 'revoked'
   | 'disabled'
+  | 'agent_required'
+  | 'unsupported'
   | 'error';
+
+/** True when the server placed this session under the hybrid Windows policy. */
+export function isHybridWindowsPayload(payload: DeviceAccessPayload | null): boolean {
+  if (!payload) return false;
+  if (payload.bindingMode) return payload.bindingMode === 'hybrid_windows';
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Status transition rules — mirrors the admin_device_action RPC so the UI and
@@ -304,5 +373,38 @@ export function canTransitionDevice(status: DeviceStatus, action: DeviceTransiti
       return status === 'rejected' || status === 'revoked';
     default:
       return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Windows-agent device transitions. 'reenroll' invalidates the stored public
+// key server-side so the agent must generate a fresh identity/key pair.
+// ---------------------------------------------------------------------------
+
+export type WindowsDeviceAction = 'approve' | 'reject' | 'revoke' | 'pending' | 'reenroll';
+
+export function canActOnWindowsDevice(status: DeviceStatus, action: WindowsDeviceAction): boolean {
+  if (action === 'reenroll') {
+    // Re-enrollment is offered for any Windows agent device the admin may want
+    // to invalidate (approved, or already revoked/pending/rejected).
+    return true;
+  }
+  return canTransitionDevice(status, action);
+}
+
+export function attestationStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case 'attested':
+      return 'Attested';
+    case 'enrolled':
+      return 'Enrolled (key stored)';
+    case 'failed':
+      return 'Failed';
+    case 're_enrollment_required':
+      return 'Re-enrollment required';
+    case 'none':
+      return 'None';
+    default:
+      return '—';
   }
 }

@@ -3,7 +3,7 @@ import type { OpeningItem, ProjectMetadata } from './types';
 import { TYPOLOGY_IDS } from './types';
 import { requireSupabase } from './supabase';
 import type { SupabaseUser } from './supabase';
-import { ensureDeviceIdentity } from './device-access';
+import { protectedRpcCredential } from './device-api';
 
 export const STORED_PROJECT_VERSION = 1;
 const LOCAL_STORAGE_KEY = 'fullaludoor.stored-projects.v1';
@@ -92,7 +92,10 @@ function parseConfiguration(value: unknown): StoredProject | null {
 const FRIENDLY_RPC_MESSAGES: Array<[RegExp, string]> = [
   [/relation "door_projects" does not exist|relation "organizations" does not exist|42P01/i, 'Database schema is not provisioned. Run supabase/schema.sql in the Supabase SQL editor first.'],
   [/Could not find the function|PGRST202|function .* does not exist/i, 'Device approval is not provisioned. Run supabase/schema.sql in the Supabase SQL editor first.'],
-  [/DEVICE_NOT_APPROVED/i, 'This device has not been approved. Ask an administrator to approve it.'],
+  [/DEVICE_NOT_APPROVED/i, 'This Windows device has not been approved. Ask an administrator to approve it.'],
+  [/DEVICE_PROOF_STALE/i, 'This Windows device proof expired. Reconnecting with the device agent…'],
+  [/DEVICE_AGENT_REQUIRED/i, 'The Windows Device Agent is required to open this project. Install it and retry.'],
+  [/DEVICE_CREDENTIAL_REQUIRED/i, 'No device credential was presented. Sign in again.'],
   [/DEVICE_TOKEN_REQUIRED/i, 'This browser has no device identity. Sign out and sign in again.'],
   [/ACCOUNT_DISABLED/i, 'Your account has been disabled. Contact an administrator.'],
   [/UNAUTHENTICATED/i, 'Your session expired. Sign in again.'],
@@ -108,8 +111,8 @@ function resolveErrorMessage(error: unknown): string {
   return message;
 }
 
-function deviceToken(): string {
-  return ensureDeviceIdentity().token;
+async function deviceCredential(): Promise<string> {
+  return protectedRpcCredential();
 }
 
 function readLocalStore(): Array<{ ref: StoredProjectRef; doc: StoredProject }> {
@@ -206,7 +209,7 @@ export function saveLocalProject(project: ProjectMetadata, openings: OpeningItem
 export async function listCloudProjects(_user: SupabaseUser): Promise<StoredProjectRef[]> {
   const supabase = requireSupabase();
   const { data, error } = await supabase.rpc('app_list_projects', {
-    p_token: deviceToken(),
+    p_token: await deviceCredential(),
   });
   if (error) throw new Error(resolveErrorMessage(error));
   const rows = Array.isArray(data) ? data : [];
@@ -224,7 +227,7 @@ export async function listCloudProjects(_user: SupabaseUser): Promise<StoredProj
 export async function loadCloudProject(rowId: string): Promise<StoredProject | null> {
   const supabase = requireSupabase();
   const { data, error } = await supabase.rpc('app_load_project', {
-    p_token: deviceToken(),
+    p_token: await deviceCredential(),
     p_project_id: rowId,
   });
   if (error) throw new Error(resolveErrorMessage(error));
@@ -241,7 +244,7 @@ export async function saveCloudProject(
   try {
     const configuration = serializeConfiguration(project, openings);
     const { data, error } = await supabase.rpc('app_save_project', {
-      p_token: deviceToken(),
+      p_token: await deviceCredential(),
       p_name: project.projectName,
       p_configuration: configuration,
       p_status: 'draft',
@@ -266,7 +269,7 @@ export async function deleteCloudProject(rowId: string): Promise<SaveResult> {
   const supabase = requireSupabase();
   try {
     const { error } = await supabase.rpc('app_delete_project', {
-      p_token: deviceToken(),
+      p_token: await deviceCredential(),
       p_project_id: rowId,
     });
     if (error) throw new Error(resolveErrorMessage(error));

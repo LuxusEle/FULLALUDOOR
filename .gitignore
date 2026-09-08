@@ -43,3 +43,11 @@ scratch/
 # Supabase CLI local link/cache
 supabase/.temp/
 
+
+# .NET (FullAluDoor.DeviceAgent)
+tools/**/bin/
+tools/**/obj/
+tools/**/publish/
+tools/**/TestResults/
+tools/.vs/
+*.user

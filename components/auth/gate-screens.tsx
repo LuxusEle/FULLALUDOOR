@@ -12,6 +12,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  MonitorDown,
   RefreshCw,
   ShieldAlert,
   ShieldCheck as ShieldCheckIcon,
@@ -159,7 +160,7 @@ const STATUS_COPY: Record<StatusTone, { pill: string; pillClass: string; heading
     pillClass: 'gate-pill-pending',
     heading: 'Device approval required',
     lead:
-      'Your account is authenticated, but this device has not yet been approved by an administrator. The workspace stays locked until approval is granted.',
+      'Your account is authenticated. This Windows computer has been registered and is waiting for an administrator to approve it. The workspace stays locked until the device is approved.',
   },
   denied: {
     pill: 'REJECTED',
@@ -173,7 +174,7 @@ const STATUS_COPY: Record<StatusTone, { pill: string; pillClass: string; heading
     pillClass: 'gate-pill-denied',
     heading: 'Device access revoked',
     lead:
-      'Access from this device has been revoked by an administrator. Contact the administrator to restore access.',
+      'An administrator has revoked access for this computer. All browsers on this computer are blocked until the device is approved again.',
   },
   disabled: {
     pill: 'DISABLED',
@@ -236,6 +237,90 @@ export function StatusPanel({ tone, deviceName, deviceId, email, busy, onCheck, 
           <LogOut size={15} />
           Log out
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Windows Device Agent required panel
+// ---------------------------------------------------------------------------
+
+export interface AgentDownloadInfo {
+  url: string | null;
+  label: string;
+}
+
+interface AgentRequiredPanelProps {
+  busy: boolean;
+  onRetry: () => void;
+  onLogout: () => void;
+  download: AgentDownloadInfo;
+  /** When set, shows the "not supported on this platform" variant. */
+  unsupported?: boolean;
+  /** Optional reason shown to the user (e.g. the agent version is too old). */
+  detail?: string | null;
+}
+
+export function AgentRequiredPanel({ busy, onRetry, onLogout, download, unsupported = false, detail = null }: AgentRequiredPanelProps) {
+  return (
+    <div className="gate-card">
+      <GateBrand />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div>
+          <div className="gate-eyebrow">Device verification</div>
+          <h1 className="gate-title">
+            {unsupported ? 'FullAluDoor runs on Windows' : 'Windows Device Agent required'}
+          </h1>
+        </div>
+        <span className="gate-status-pill gate-pill-pending" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+          ACTION REQUIRED
+        </span>
+      </div>
+      {unsupported ? (
+        <p className="gate-lead">
+          FullAluDoor is bound to approved Windows computers through the FullAluDoor Device Agent. This
+          platform (phone/tablet/other operating system) cannot provide a Windows device identity, so it
+          cannot be approved for access. Use an approved Windows computer.
+        </p>
+      ) : (
+        <p className="gate-lead">
+          FullAluDoor requires the FullAluDoor Device Agent to verify this Windows computer before access is
+          granted. Access is bound to this physical machine — every browser on this computer uses the same
+          approved device identity.
+        </p>
+      )}
+      {detail ? (
+        <p className="gate-message" style={{ color: '#fbbf24' }}>{detail}</p>
+      ) : null}
+      <div className="gate-detail-box" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {download.url ? (
+          <a
+            href={download.url}
+            target="_blank"
+            rel="noreferrer"
+            className="gate-btn gate-btn-primary"
+            style={{ textDecoration: 'none', justifyContent: 'center' }}
+          >
+            <MonitorDown size={15} />
+            {download.label}
+          </a>
+        ) : (
+          <p style={{ margin: 0, color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>
+            Ask your administrator for the <strong>FullAluDoor Device Agent</strong> installer, or download it
+            from the FullAluDoor portal.
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="gate-btn" onClick={() => onRetry()} disabled={busy} style={{ flex: '1 1 180px', width: 'auto' }}>
+            {busy ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />}
+            Retry detection
+          </button>
+          <button type="button" className="gate-btn gate-btn-ghost" onClick={() => onLogout()} disabled={busy} style={{ flexShrink: 0, padding: '0 18px', width: 'auto' }}>
+            <LogOut size={15} />
+            Log out
+          </button>
+        </div>
       </div>
     </div>
   );
