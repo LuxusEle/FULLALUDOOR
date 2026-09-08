@@ -5,7 +5,6 @@
 // the server; the UI never trusts its own role state to authorize an action.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import {
   ArrowLeft,
   Ban,
@@ -221,10 +220,10 @@ export default function AdminDevicePanel() {
   return (
     <div className="admin-page">
       <header className="admin-topbar">
-        <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#9aa5b1', textDecoration: 'none', fontSize: 12.5, fontWeight: 700 }}>
+        <a href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#9aa5b1', textDecoration: 'none', fontSize: 12.5, fontWeight: 700 }}>
           <ArrowLeft size={15} />
           Workspace
-        </Link>
+        </a>
         <ShieldCheck size={17} style={{ color: '#fbbf24' }} />
         <span className="admin-title">Device Administration</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>

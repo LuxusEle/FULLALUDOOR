@@ -5,7 +5,6 @@
 
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 import {
   CheckCircle2,
   Hexagon,
@@ -380,10 +379,10 @@ export function AdminRequiredPanel({ email }: AdminRequiredPanelProps) {
         This area is restricted to FullAluDoor administrators. Your account{email ? ` (${email})` : ''} does not
         have administrator privileges.
       </p>
-      <Link href="/" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
+      <a href="/" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
         <CheckCircle2 size={15} />
         Back to the workspace
-      </Link>
+      </a>
     </div>
   );
 }
@@ -403,10 +402,10 @@ export function ApprovedInsidePanel() {
       <p className="gate-lead">
         This device is approved and your account is active. Open the FullAluDoor workspace to continue.
       </p>
-      <Link href="/" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
+      <a href="/" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
         <CheckCircle2 size={15} />
         Open the workspace
-      </Link>
+      </a>
     </div>
   );
 }
