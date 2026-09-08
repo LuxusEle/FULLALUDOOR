@@ -44,6 +44,8 @@ export interface DeviceAccessPayload {
   deviceKind?: 'windows_agent' | 'browser' | null;
   attestationStatus?: string | null;
   lastAttestedAt?: string | null;
+  /** Server-declared password-only access for an ACTIVE administrator. */
+  adminAccess?: boolean;
   error?: string | null;
 }
 
@@ -297,6 +299,7 @@ export function normalizeDeviceAccessPayload(payload: unknown): DeviceAccessPayl
     deviceKind: isDeviceKind(payload.device_kind) ? payload.device_kind : null,
     attestationStatus: asString(payload.device_attestation_status),
     lastAttestedAt: asString(payload.last_attested_at),
+    adminAccess: payload.admin_access === true,
     error,
   };
 }
@@ -350,6 +353,17 @@ export function isHybridWindowsPayload(payload: DeviceAccessPayload | null): boo
   if (!payload) return false;
   if (payload.bindingMode) return payload.bindingMode === 'hybrid_windows';
   return false;
+}
+
+/**
+ * True ONLY when the database issued an admin password-only verdict
+ * (status='approved', role='admin' AND admin_access=true). This flag is set
+ * server-side by get_device_access from profiles.role/status — it is never
+ * derived from local state, so a browser cannot claim it.
+ */
+export function isAdminBypassAccess(payload: DeviceAccessPayload | null): boolean {
+  if (!payload?.ok) return false;
+  return payload.status === 'approved' && payload.role === 'admin' && payload.adminAccess === true;
 }
 
 // ---------------------------------------------------------------------------

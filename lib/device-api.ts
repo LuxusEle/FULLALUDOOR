@@ -137,6 +137,14 @@ const EMPTY_BINDING: SessionBinding = {
 
 let session = EMPTY_BINDING;
 
+/**
+ * Last role the DATABASE reported for the signed-in user (from get_device_access
+ * / verify_device_attestation). Used only to decide whether protected RPCs need
+ * a Windows agent proof; the database still re-checks is_admin() on every call,
+ * so a stale client-side value can never grant admin access.
+ */
+let sessionRole: 'admin' | 'user' | null = null;
+
 export function currentBindingMode(): ActiveBindingMode {
   return session.mode;
 }
@@ -300,6 +308,11 @@ export async function checkDeviceAccess(probe?: AgentProbeInput): Promise<Device
   }
   const payload = normalizeDeviceAccessPayload(data);
   session = { ...session, mode: inferBinding(payload) };
+  if (payload.status === 'account_disabled') {
+    sessionRole = null;
+  } else if (payload.role === 'admin' || payload.role === 'user') {
+    sessionRole = payload.role;
+  }
   if (info) rememberAgent(info, ttl);
   return payload;
 }
@@ -449,6 +462,13 @@ export async function ensureFreshWindowsProof(
 export async function protectedRpcCredential(): Promise<string> {
   const mode = session.mode === 'demo' ? resolveDeviceBindingMode() : session.mode;
   if (mode === 'hybrid_windows') {
+    // Active admins authenticate with email + password only. The database's
+    // assert_device_approved() short-circuits to true for them, so no agent
+    // proof is fetched. The credential value is irrelevant for an admin but is
+    // still sent (never trusted client-side).
+    if (sessionRole === 'admin') {
+      return currentToken();
+    }
     const agent = session.agentInfo;
     if (!agent) {
       throw new Error('DEVICE_AGENT_REQUIRED: no Windows device agent is available for this session.');
