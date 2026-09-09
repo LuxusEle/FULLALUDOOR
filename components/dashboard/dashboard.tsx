@@ -9,6 +9,7 @@ import {
   catalogTotals,
   deriveProjectIssues,
   type CatalogRecord,
+  type CatalogStatus,
 } from '../../lib/project-catalog';
 import { loadProjectByRef } from '../../lib/project-storage';
 import { useProjectCatalog } from './use-project-catalog';
@@ -58,6 +59,9 @@ export default function DashboardHome({
   const catalog = useProjectCatalog();
   const [query, setQuery] = useState('');
   const [busyRecord, setBusyRecord] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | CatalogStatus>('all');
+  const [sortMode, setSortMode] = useState<'recent' | 'alpha'>('recent');
 
   // Live view of the currently open project, used to keep stats/alerts honest
   // even when the open project is newer than its last saved snapshot.
@@ -74,8 +78,22 @@ export default function DashboardHome({
     [project, projectRef?.savedAt, openings]
   );
 
+  const hasAnyStored = catalog.records.length > 0;
+  const archivedCount = catalog.records.filter((record) => record.archived).length;
+
+  const activeRows = useMemo(() => {
+    return catalog.records
+      .filter((record) => showArchived || !record.archived)
+      .filter((record) => statusFilter === 'all' || record.status === statusFilter)
+      .sort((a, b) =>
+        sortMode === 'alpha'
+          ? a.name.localeCompare(b.name)
+          : Date.parse(b.savedAt) - Date.parse(a.savedAt)
+      );
+  }, [catalog.records, showArchived, statusFilter, sortMode]);
+
   const records = useMemo(() => {
-    return catalog.records.map((record) => {
+    return activeRows.map((record) => {
       if (isOpenProject(record, project, projectRef) && currentDoc) {
         return {
           ...record,
@@ -87,10 +105,10 @@ export default function DashboardHome({
       }
       return record;
     });
-  }, [catalog.records, project, projectRef, currentDoc]);
+  }, [activeRows, project, projectRef, currentDoc]);
 
-  const cloudCount = catalog.records.filter((record) => record.kind === 'cloud').length;
-  const localCount = catalog.records.length - cloudCount;
+  const cloudCount = activeRows.filter((record) => record.kind === 'cloud').length;
+  const localCount = activeRows.length - cloudCount;
 
   const currentIssues: DashboardIssue[] = useMemo(() => {
     if (!project || !currentDoc) return [];
@@ -157,8 +175,6 @@ export default function DashboardHome({
     }
   };
 
-  const hasAny = catalog.records.length > 0;
-
   return (
     <div className="dashboard-wrapper db-home">
       <DashboardHeader
@@ -175,7 +191,7 @@ export default function DashboardHome({
         onOpenProject={onOpenProject}
         searchQuery={query}
         onSearchQueryChange={setQuery}
-        canSearch={hasAny}
+        canSearch={hasAnyStored}
       />
 
       <DashboardWarnings warnings={catalog.warnings} />
@@ -184,14 +200,59 @@ export default function DashboardHome({
         <DashboardSkeleton />
       ) : catalog.error ? (
         <DashboardError message={catalog.error} onRetry={catalog.refresh} />
-      ) : !hasAny ? (
+      ) : !hasAnyStored ? (
         <DashboardEmpty
           openProjectName={project?.projectName ?? null}
           onCreateProject={onCreateProject}
           onOpenProject={onOpenProject}
         />
+      ) : activeRows.length === 0 ? (
+        <div className="db-section">
+          <div className="db-none">
+            No projects match the current filters. All {archivedCount} saved project
+            {archivedCount === 1 ? ' is' : 's are'} archived — toggle <strong>Show archived</strong> to
+            restore or view them.
+          </div>
+        </div>
       ) : (
         <>
+          <div className="db-filter-row" role="toolbar" aria-label="Filter and sort projects">
+            <label className="db-filter-field">
+              <span>Status</span>
+              <select
+                className="select"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as 'all' | CatalogStatus)}
+              >
+                <option value="all">All statuses</option>
+                <option value="in-progress">In Progress</option>
+                <option value="review">Review</option>
+                <option value="draft">Draft</option>
+              </select>
+            </label>
+            <label className="db-filter-field">
+              <span>Sort</span>
+              <select
+                className="select"
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as 'recent' | 'alpha')}
+              >
+                <option value="recent">Recently modified</option>
+                <option value="alpha">Name (A–Z)</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className={`btn ${showArchived ? '' : 'btn-ghost'}`}
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived((current) => !current)}
+              title={archivedCount > 0 ? `Show ${archivedCount} archived project${archivedCount === 1 ? '' : 's'}` : 'No archived projects'}
+              disabled={archivedCount === 0}
+            >
+              Show archived{archivedCount > 0 ? ` (${archivedCount})` : ''}
+            </button>
+          </div>
+
           <ProjectStats
             totals={totals}
             cloudCount={cloudCount}

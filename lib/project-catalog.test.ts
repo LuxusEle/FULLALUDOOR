@@ -6,12 +6,15 @@ import {
   catalogTotals,
   deriveOpeningIssues,
   deriveProjectIssues,
+  formatProjectNumber,
   formatRelativeTime,
   isRecentlyModified,
   MAX_WIDTH_MM,
   MIN_HEIGHT_MM,
   MIN_WIDTH_MM,
+  nextProjectNumber,
   openingHasIssue,
+  parseProjectNumber,
   severityRank,
   toCatalogRecord,
 } from './project-catalog';
@@ -182,5 +185,45 @@ describe('severityRank', () => {
     expect(severityRank('info')).toBeLessThan(severityRank('review'));
     expect(severityRank('review')).toBeLessThan(severityRank('warning'));
     expect(severityRank('warning')).toBeLessThan(severityRank('critical'));
+  });
+});
+
+describe('project numbering', () => {
+  const now = new Date(2026, 8, 10);
+
+  it('parses and formats FA-YYYY-NNN numbers', () => {
+    expect(parseProjectNumber('FA-2026-014')).toEqual({ prefix: 'FA', year: 2026, seq: 14 });
+    expect(parseProjectNumber('FA-2026-001')).toEqual({ prefix: 'FA', year: 2026, seq: 1 });
+    expect(formatProjectNumber(2026, 1)).toBe('FA-2026-001');
+    expect(parseProjectNumber('not-a-number')).toBeNull();
+  });
+
+  it('generates the next unused number and skips gaps only where needed', () => {
+    const existing = ['FA-2026-001', 'FA-2026-002', 'FA-2025-050'];
+    expect(nextProjectNumber(existing, now)).toBe('FA-2026-003');
+  });
+
+  it('never collides with existing numbers', () => {
+    const existing = Array.from({ length: 300 }, (_, index) => `FA-2026-${String(index + 1).padStart(3, '0')}`);
+    const next = nextProjectNumber(existing, now);
+    expect(existing).not.toContain(next);
+    expect(parseProjectNumber(next)?.year).toBe(2026);
+  });
+
+  it('ignores other prefixes when sequencing FA numbers', () => {
+    expect(nextProjectNumber(['ALU-2026-999'], now)).toBe('FA-2026-001');
+  });
+});
+
+describe('catalog record archive flag', () => {
+  it('marks archived documents', () => {
+    const stored = doc([opening()], { archived: true });
+    const record = toCatalogRecord(stored, {
+      id: 'r',
+      name: stored.project.projectName,
+      savedAt: stored.savedAt,
+      kind: 'local',
+    });
+    expect(record.archived).toBe(true);
   });
 });

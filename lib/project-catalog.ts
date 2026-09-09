@@ -145,6 +145,40 @@ export interface CatalogRecord {
   totalLeaves: number;
   issues: ProjectIssue[];
   status: CatalogStatus;
+  archived: boolean;
+}
+
+export interface ProjectNumber {
+  prefix: string;
+  year: number;
+  seq: number;
+}
+
+export function parseProjectNumber(value: string): ProjectNumber | null {
+  const match = /^(FA|ALU)[- ]?(\d{4})[- ](\d{2,})$/i.exec(value.trim());
+  if (!match) return null;
+  return { prefix: match[1].toUpperCase(), year: Number(match[2]), seq: Number(match[3]) };
+}
+
+export function formatProjectNumber(year: number, seq: number): string {
+  return `FA-${year}-${String(seq).padStart(3, '0')}`;
+}
+
+/**
+ * Next sequential project number (FA-YYYY-NNN) that does not collide with any
+ * existing number. Sequence restarts per calendar year and skips used numbers.
+ */
+export function nextProjectNumber(existing: string[], now = new Date()): string {
+  const year = now.getFullYear();
+  const used = new Set(
+    existing
+      .map(parseProjectNumber)
+      .filter((parsed): parsed is ProjectNumber => parsed !== null && parsed.year === year)
+      .map((parsed) => parsed.seq)
+  );
+  let seq = 1;
+  while (used.has(seq)) seq += 1;
+  return formatProjectNumber(year, seq);
 }
 
 export function toCatalogRecord(
@@ -163,6 +197,7 @@ export function toCatalogRecord(
     totalLeaves: doc.openings.reduce((sum, o) => sum + (o.quantity || 0), 0),
     issues,
     status: catalogStatus(doc),
+    archived: doc.project.archived === true,
   };
 }
 

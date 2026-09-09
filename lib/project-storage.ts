@@ -11,6 +11,18 @@ const LOCAL_STORAGE_KEY = 'fullaludoor.stored-projects.v1';
 export const finishSchema = z.enum(['natural', 'black', 'bronze', 'white']);
 export const glassSchema = z.enum(['6mm-clear', '8mm-tinted', '10.38mm-laminated', '12mm-toughened', '24mm-dgu']);
 
+const projectPricingSchema = z
+  .object({
+    labourLkr: z.number(),
+    transportLkr: z.number(),
+    installationLkr: z.number(),
+    overheadLkr: z.number(),
+    discountLkr: z.number(),
+    defaultMarginPercent: z.number(),
+    manualSellingLkr: z.number().nullable(),
+  })
+  .partial();
+
 const projectMetadataSchema = z.object({
   id: z.string().min(1),
   projectName: z.string().min(1),
@@ -20,6 +32,19 @@ const projectMetadataSchema = z.object({
   currency: z.string(),
   taxRatePercent: z.number(),
   contractorName: z.string(),
+  company: z.string().optional(),
+  clientContact: z.string().optional(),
+  clientPhone: z.string().optional(),
+  clientEmail: z.string().optional(),
+  siteAddress: z.string().optional(),
+  description: z.string().optional(),
+  assignedStaff: z.string().optional(),
+  targetCompletionDate: z.string().optional(),
+  notes: z.string().optional(),
+  archived: z.boolean().optional(),
+  archivedAt: z.string().nullable().optional(),
+  duplicateOf: z.string().nullable().optional(),
+  pricing: projectPricingSchema.optional(),
 });
 
 const openingItemSchema = z.object({

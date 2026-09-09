@@ -7,6 +7,7 @@ import {
   Check,
   ChevronsLeft,
   ChevronsRight,
+  ClipboardList,
   Compass,
   DollarSign,
   Download,
@@ -16,12 +17,15 @@ import {
   Hammer,
   Hexagon,
   Home,
+  Layers,
   Moon,
   Plus,
+  Receipt,
   Save,
   Scissors,
   Shield,
   Sun,
+  Wallet,
 } from 'lucide-react';
 import ProjectSchedule from '../components/project-schedule';
 import VectorCadDrawings from '../components/vector-cad-drawings';
@@ -29,6 +33,10 @@ import NestingView from '../components/nesting-view';
 import CommercialQuoteView from '../components/commercial-quote';
 import FabricationAuditReport from '../components/fabrication-audit-report';
 import CuttingPlanePrintDocument from '../components/cutting-plane-print-document';
+import BasicDetailsPanel from '../components/project/basic-details';
+import BomPanel from '../components/project/bom-panel';
+import PosPanel from '../components/project/pos-panel';
+import FinanceSummaryPanel from '../components/project/finance-summary';
 import CloudProjectPanel from '../components/cloud-project-panel';
 import ProjectLibrary from '../components/project-library';
 import DoorViewer from './door-viewer';
@@ -37,9 +45,18 @@ import NewProjectDialog, { type NewProjectDetails } from '../components/dashboar
 import type { SessionActivity } from '../components/dashboard/dashboard-types';
 import { useAccessSession } from '../components/auth/access-gate';
 import { getCurrentUser, isDemoAuth } from '../lib/auth';
-import { saveCloudProject, saveLocalProject } from '../lib/project-storage';
+import {
+  listCloudProjects,
+  listLocalProjects,
+  loadCloudProject,
+  loadLocalProject,
+  saveCloudProject,
+  saveLocalProject,
+} from '../lib/project-storage';
 import { captureStudioCanvasNow } from '../lib/studio-snapshot';
+import { nextProjectNumber } from '../lib/project-catalog';
 import { buildManufacturingDossier, type ManufacturingDossier } from '../lib/manufacturing-dossier';
+import { buildProjectBOM } from '../lib/bom-engine';
 import type { DoorConfig } from '../lib/door-model';
 import { defaultDoorConfig, deriveDoor, doorConfigSchema, fabricationChecks } from '../lib/door-model';
 import type { DerivedOpening, OpeningItem, ProjectMetadata, TypologyId, ProjectNestingSummary } from '../lib/types';
@@ -47,7 +64,10 @@ import type { StoredProject, StoredProjectRef } from '../lib/project-storage';
 import { nestProjectCuts } from '../lib/nesting-engine';
 import { TYPOLOGY_LABELS } from '../components/project-schedule';
 
-export type WorkspaceTab = 'dashboard' | 'studio' | 'schedule' | 'cad' | 'nesting' | 'quote' | 'audit';
+export type WorkspaceTab = 'dashboard' | 'details' | 'designs' | 'bom' | 'quotation' | 'pos' | 'finance';
+
+/** Manufacturing tools that live inside the Designs section. */
+export type DesignTool = 'list' | 'studio' | 'cad' | 'audit' | 'nesting';
 
 const THEME_STORAGE_KEY = 'fullaludoor.theme.v1';
 
@@ -73,6 +93,7 @@ declare global {
 
 export default function DoorDesigner() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
+  const [designTool, setDesignTool] = useState<DesignTool>('list');
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const { role: accessRole } = useAccessSession();
@@ -205,15 +226,28 @@ export default function DoorDesigner() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  const goToTab = useCallback((tab: WorkspaceTab) => {
-    if (tab !== 'studio') {
+  const goToTab = useCallback(
+    (tab: WorkspaceTab) => {
       // Snapshot the live 3D Studio frame before its canvas unmounts so the
-      // Fabricator Audit tab can embed the last rendered model.
-      captureStudioCanvasNow();
-    }
-    setActiveTab(tab);
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  }, []);
+      // Fabricator Audit sheet can embed the last rendered model.
+      if (activeTab === 'designs' && designTool === 'studio' && tab !== 'designs') {
+        captureStudioCanvasNow();
+      }
+      setActiveTab(tab);
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    },
+    [activeTab, designTool]
+  );
+
+  const openDesignTool = useCallback(
+    (tool: DesignTool) => {
+      if (designTool === 'studio' && tool !== 'studio') {
+        captureStudioCanvasNow();
+      }
+      setDesignTool(tool);
+    },
+    [designTool]
+  );
 
   // Active opening currently loaded in the 3D & 2D views.
   const activeOpening = useMemo(
@@ -283,7 +317,8 @@ export default function DoorDesigner() {
     (doc: StoredProject, ref: StoredProjectRef) => {
       applyStoredProject(doc, ref);
       logActivity('opened', 'Project opened', doc.project.projectName, ref.kind === 'cloud' ? 'Cloud copy' : 'Browser copy');
-      goToTab('schedule');
+      setDesignTool('list');
+      goToTab('designs');
     },
     [applyStoredProject, logActivity, goToTab]
   );
@@ -306,13 +341,45 @@ export default function DoorDesigner() {
     };
   };
 
-  const startNewProject = (details: NewProjectDetails) => {
+  const collectExistingProjectNumbers = useCallback(async (): Promise<string[]> => {
+    const existing: string[] = [];
+    for (const ref of listLocalProjects()) {
+      const stored = loadLocalProject(ref.id);
+      if (stored?.project.projectNumber) existing.push(stored.project.projectNumber);
+    }
+    if (!demoMode) {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          const cloudRefs = await listCloudProjects(user);
+          for (const cloudRef of cloudRefs) {
+            try {
+              const stored = await loadCloudProject(cloudRef.id);
+              if (stored?.project.projectNumber) existing.push(stored.project.projectNumber);
+            } catch {
+              // best-effort: an unreadable cloud row is skipped
+            }
+          }
+        }
+      } catch {
+        // offline / approval issues — numbering falls back to local only
+      }
+    }
+    return existing;
+  }, [demoMode]);
+
+  const nextProjectNumberForYear = useCallback(async (): Promise<string> => {
+    return nextProjectNumber(await collectExistingProjectNumbers());
+  }, [collectExistingProjectNumbers]);
+
+  const startNewProject = async (details: NewProjectDetails) => {
     const now = new Date();
+    const enteredNumber = details.projectNumber?.trim() || '';
     const freshProject: ProjectMetadata = {
       id: `proj-${now.getTime().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
       projectName: details.projectName?.trim() || 'New Project',
       clientName: details.clientName || '',
-      projectNumber: details.projectNumber || '',
+      projectNumber: enteredNumber || (await nextProjectNumberForYear()),
       date: details.date || now.toISOString().slice(0, 10),
       currency: details.currency || 'LKR',
       taxRatePercent: details.taxRatePercent,
@@ -330,12 +397,46 @@ export default function DoorDesigner() {
     focusConfig(firstUnit);
     logActivity('created', 'Project created', freshProject.projectName, `No. ${freshProject.projectNumber || 'unassigned'}`);
     setNewProjectOpen(false);
-    goToTab('schedule');
+    setDesignTool('list');
+    goToTab('designs');
   };
 
   const openNewProjectDialog = () => setNewProjectOpen(true);
 
   const openProjectLibrary = () => setProjectsOpen(true);
+
+  const handleDuplicateProject = useCallback(async () => {
+    if (!project) return;
+    const now = new Date();
+    const copyNumber = await nextProjectNumberForYear();
+    const copyProject: ProjectMetadata = {
+      ...project,
+      id: `proj-${now.getTime().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`,
+      projectName: `${project.projectName} (Copy)`,
+      projectNumber: copyNumber,
+      archived: false,
+      archivedAt: null,
+      duplicateOf: project.id,
+    };
+    const copyOpenings = openings.map((opening) => ({
+      ...opening,
+      id: `open-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    }));
+    setProject(copyProject);
+    setOpenings(copyOpenings);
+    setProjectRef(null);
+    setMakeStatus('');
+    savedSnapshotRef.current = null;
+    setAutosaveNote(null);
+    const first = copyOpenings[0] ?? null;
+    if (first) {
+      setActiveOpeningId(first.id);
+      focusConfig(first);
+    }
+    logActivity('created', 'Project duplicated', copyProject.projectName, `Copy of ${project.projectNumber}`);
+    setDesignTool('list');
+    goToTab('designs');
+  }, [project, openings, focusConfig, nextProjectNumberForYear, logActivity, goToTab]);
 
   const derived = useMemo(() => deriveDoor(config), [config]);
   const checks = useMemo(() => fabricationChecks(config), [config]);
@@ -348,6 +449,11 @@ export default function DoorDesigner() {
   const allProjectCuts = useMemo(() => derivedProjectOpenings.flatMap((d) => d.cutList), [derivedProjectOpenings]);
 
   const projectNesting: ProjectNestingSummary = useMemo(() => nestProjectCuts(allProjectCuts), [allProjectCuts]);
+
+  const bomLines = useMemo(
+    () => (project ? buildProjectBOM(derivedProjectOpenings, projectNesting) : []),
+    [project, derivedProjectOpenings, projectNesting]
+  );
 
   const manufacturingDossier: ManufacturingDossier | null = useMemo(
     () => (project ? buildManufacturingDossier(project, derivedProjectOpenings, projectNesting) : null),
@@ -442,24 +548,18 @@ export default function DoorDesigner() {
 
   const NAV_ITEMS: { key: string; icon: typeof Home; label: string; short: string; go: WorkspaceTab }[] = [
     { key: 'dashboard', icon: Home, label: 'Dashboard', short: 'Home', go: 'dashboard' },
+    { key: 'details', icon: ClipboardList, label: 'Details', short: 'Details', go: 'details' },
     {
-      key: 'schedule',
+      key: 'designs',
       icon: FileSpreadsheet,
-      label: `Project Schedule (${openings.length})`,
-      short: 'Schedule',
-      go: 'schedule',
+      label: `Designs (${openings.length})`,
+      short: 'Designs',
+      go: 'designs',
     },
-    { key: 'studio', icon: BoxSelect, label: '3D Studio', short: 'Studio', go: 'studio' },
-    { key: 'cad', icon: Compass, label: '2D Vector CAD', short: 'CAD', go: 'cad' },
-    {
-      key: 'nesting',
-      icon: Scissors,
-      label: `1D Nesting & Labels (${projectNesting.totalBarsToPull} bars)`,
-      short: 'Nesting',
-      go: 'nesting',
-    },
-    { key: 'quote', icon: DollarSign, label: 'Commercial Quote & BOM', short: 'Quote', go: 'quote' },
-    { key: 'audit', icon: FileCheck2, label: 'Fabricator Audit (PDF)', short: 'Audit', go: 'audit' },
+    { key: 'bom', icon: Layers, label: 'BOM', short: 'BOM', go: 'bom' },
+    { key: 'quotation', icon: DollarSign, label: 'Quotation', short: 'Quote', go: 'quotation' },
+    { key: 'pos', icon: Receipt, label: 'POs', short: 'POs', go: 'pos' },
+    { key: 'finance', icon: Wallet, label: 'Finance Summary', short: 'Finance', go: 'finance' },
   ];
 
   // Register AI Tools for document.modelContext
@@ -537,10 +637,8 @@ export default function DoorDesigner() {
         </span>
         <h2>No project is open</h2>
         <p>
-          {activeTab === 'studio'
-            ? 'The 3D Studio, CAD drawings, nesting, quotation and audit tools all work against a project.'
-            : 'This workspace tool needs a project to act on.'}{' '}
-          Create a new project or open a saved one to continue.
+          The Details, Designs, BOM, Quotation, POs and Finance sections all work against a
+          project. Create a new project or open a saved one to continue.
         </p>
         <div className="db-gate-actions">
           <button type="button" className="btn btn-primary" onClick={openNewProjectDialog}>
@@ -666,7 +764,31 @@ export default function DoorDesigner() {
           openings={openings}
           dossier={manufacturingDossier}
           activities={activities}
-          onGo={(tab) => goToTab(tab)}
+          onGo={(target) => {
+            if (target === 'quote') {
+              goToTab('quotation');
+              return;
+            }
+            if (target === 'schedule') {
+              setDesignTool('list');
+              goToTab('designs');
+              return;
+            }
+            const tool: DesignTool | null =
+              target === 'studio'
+                ? 'studio'
+                : target === 'cad'
+                  ? 'cad'
+                  : target === 'nesting'
+                    ? 'nesting'
+                    : target === 'audit'
+                      ? 'audit'
+                      : null;
+            if (tool) {
+              setDesignTool(tool);
+              goToTab('designs');
+            }
+          }}
           onOpenDocument={(doc, ref) => openStoredProject(doc, ref)}
           onCreateProject={openNewProjectDialog}
           onOpenProject={openProjectLibrary}
@@ -677,9 +799,56 @@ export default function DoorDesigner() {
       ) : (
         <>
           {/* ========================================================================= */}
-          {/* 3D STUDIO TAB                                                              */}
+          {/* PROJECT SECTION: DETAILS (BASIC DETAILS)                                   */}
           {/* ========================================================================= */}
-          {activeTab === 'studio' && (
+          {activeTab === 'details' && (
+            <BasicDetailsPanel
+              project={project}
+              openings={openings}
+              onChange={(updates) => updateProject((current) => ({ ...current, ...updates }))}
+              onDuplicate={() => void handleDuplicateProject()}
+              onGoDesigns={() => {
+                setDesignTool('list');
+                goToTab('designs');
+              }}
+            />
+          )}
+
+          {/* ========================================================================= */}
+          {/* PROJECT SECTION: DESIGNS HUB (OPENING LIST + DESIGN TOOLS)                 */}
+          {/* ========================================================================= */}
+          {activeTab === 'designs' && (
+            <nav className="designs-toolbar" aria-label="Design tools">
+              {(
+                [
+                  { key: 'list', label: 'Opening List', icon: FileSpreadsheet },
+                  { key: 'studio', label: '3D Studio', icon: BoxSelect },
+                  { key: 'cad', label: '2D CAD', icon: Compass },
+                  { key: 'audit', label: 'Fabrication Audit', icon: FileCheck2 },
+                  { key: 'nesting', label: 'Cutting / Nesting', icon: Scissors },
+                ] as const
+              ).map((tool) => {
+                const Icon = tool.icon;
+                const active = designTool === tool.key;
+                return (
+                  <button
+                    key={tool.key}
+                    type="button"
+                    className={`btn-pill ${active ? 'active' : ''}`}
+                    aria-pressed={active}
+                    onClick={() => openDesignTool(tool.key)}
+                  >
+                    <Icon size={14} /> {tool.label}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+
+          {/* ========================================================================= */}
+          {/* 3D STUDIO DESIGN TOOL                                                        */}
+          {/* ========================================================================= */}
+          {activeTab === 'designs' && designTool === 'studio' && (
             <>
               <div className="studio-mobile-switcher">
                 <button type="button" className={`studio-mobile-btn ${studioMobileTab === 'canvas' ? 'active' : ''}`} onClick={() => setStudioMobileTab('canvas')}>
@@ -973,7 +1142,7 @@ export default function DoorDesigner() {
                           </tbody>
                         </table>
                       </div>
-                      <button onClick={() => goToTab('schedule')} className="panel-inline-link">
+                      <button onClick={() => openDesignTool('list')} className="panel-inline-link">
                         View Full Cut List <span aria-hidden>→</span>
                       </button>
                     </section>
@@ -984,9 +1153,9 @@ export default function DoorDesigner() {
           )}
 
           {/* ========================================================================= */}
-          {/* PROJECT SCHEDULE TAB                                                       */}
+          {/* DESIGNS → OPENING LIST (PROJECT REGISTER)                                   */}
           {/* ========================================================================= */}
-          {activeTab === 'schedule' && project && (
+          {activeTab === 'designs' && designTool === 'list' && project && (
             <ProjectSchedule
               project={project}
               setProject={updateProject}
@@ -995,25 +1164,36 @@ export default function DoorDesigner() {
               activeOpeningId={activeOpeningId ?? ''}
               onSelectOpening={(id) => {
                 handleSelectOpening(id);
-                goToTab('studio');
+                setDesignTool('studio');
               }}
             />
           )}
 
           {/* ========================================================================= */}
-          {/* 2D VECTOR CAD CONSTRUCTION DOCUMENTS TAB                                   */}
+          {/* DESIGNS → 2D VECTOR CAD CONSTRUCTION DOCUMENTS                             */}
           {/* ========================================================================= */}
-          {activeTab === 'cad' && activeOpening && <VectorCadDrawings opening={activeOpening} theme={theme} />}
+          {activeTab === 'designs' && designTool === 'cad' && activeOpening && <VectorCadDrawings opening={activeOpening} theme={theme} />}
 
           {/* ========================================================================= */}
-          {/* 1D BAR NESTING & LABELS TAB                                                */}
+          {/* DESIGNS → CUTTING / NESTING                                               */}
           {/* ========================================================================= */}
-          {activeTab === 'nesting' && <NestingView nesting={projectNesting} cuts={allProjectCuts} theme={theme} />}
+          {activeTab === 'designs' && designTool === 'nesting' && <NestingView nesting={projectNesting} cuts={allProjectCuts} theme={theme} />}
 
           {/* ========================================================================= */}
-          {/* COMMERCIAL QUOTE & MASTER BOM TAB                                          */}
+          {/* PROJECT SECTION: BOM                                                        */}
           {/* ========================================================================= */}
-          {activeTab === 'quote' && project && (
+          {activeTab === 'bom' && (
+            <BomPanel
+              project={project}
+              openings={derivedProjectOpenings}
+              nesting={projectNesting}
+            />
+          )}
+
+          {/* ========================================================================= */}
+          {/* PROJECT SECTION: QUOTATION                                                  */}
+          {/* ========================================================================= */}
+          {activeTab === 'quotation' && project && (
             <CommercialQuoteView
               project={project}
               openings={derivedProjectOpenings}
@@ -1026,9 +1206,31 @@ export default function DoorDesigner() {
           )}
 
           {/* ========================================================================= */}
-          {/* EXPERT FABRICATOR AUDIT REPORT & CONSTRUCTION DOSSIER TAB                  */}
+          {/* PROJECT SECTION: PURCHASE ORDERS                                            */}
           {/* ========================================================================= */}
-          {activeTab === 'audit' && project && activeOpening && (
+          {activeTab === 'pos' && (
+            <PosPanel
+              bom={bomLines}
+              project={project}
+            />
+          )}
+
+          {/* ========================================================================= */}
+          {/* PROJECT SECTION: FINANCE SUMMARY                                             */}
+          {/* ========================================================================= */}
+          {activeTab === 'finance' && (
+            <FinanceSummaryPanel
+              project={project}
+              openings={derivedProjectOpenings}
+              nesting={projectNesting}
+              onChange={(updates) => updateProject((current) => ({ ...current, ...updates }))}
+            />
+          )}
+
+          {/* ========================================================================= */}
+          {/* DESIGNS → EXPERT FABRICATOR AUDIT REPORT & CONSTRUCTION DOSSIER            */}
+          {/* ========================================================================= */}
+          {activeTab === 'designs' && designTool === 'audit' && project && activeOpening && (
             <FabricationAuditReport
               project={project}
               openings={openings}

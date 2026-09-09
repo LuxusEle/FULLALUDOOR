@@ -45,6 +45,33 @@ export interface OpeningItem {
   openingAngle?: number;
 }
 
+export interface ProjectPricing {
+  /** Extra labour beyond the per-opening machining rate (LKR). */
+  labourLkr?: number;
+  /** Transport / delivery to site (LKR). */
+  transportLkr?: number;
+  /** Installation labour (LKR). */
+  installationLkr?: number;
+  /** Contingency / overhead (LKR). */
+  overheadLkr?: number;
+  /** Customer discount (LKR). */
+  discountLkr?: number;
+  /** Target gross margin percentage applied when no manual selling price is set. */
+  defaultMarginPercent?: number;
+  /** Manual final selling price (LKR). When null/undefined the margin is applied to cost. */
+  manualSellingLkr?: number | null;
+}
+
+export const DEFAULT_PROJECT_PRICING: ProjectPricing = {
+  labourLkr: 0,
+  transportLkr: 0,
+  installationLkr: 0,
+  overheadLkr: 0,
+  discountLkr: 0,
+  defaultMarginPercent: 25,
+  manualSellingLkr: null,
+};
+
 export interface ProjectMetadata {
   id: string;
   projectName: string;
@@ -54,6 +81,20 @@ export interface ProjectMetadata {
   currency: string;
   taxRatePercent: number;
   contractorName: string;
+  // -- Phase 1 Basic Details fields (all optional for backward compatibility) --
+  company?: string;
+  clientContact?: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  siteAddress?: string;
+  description?: string;
+  assignedStaff?: string;
+  targetCompletionDate?: string;
+  notes?: string;
+  archived?: boolean;
+  archivedAt?: string | null;
+  duplicateOf?: string | null;
+  pricing?: ProjectPricing;
 }
 
 export interface CutItem {

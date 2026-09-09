@@ -81,6 +81,9 @@ export default function RecentProjects({
                       {record.name}
                     </button>
                     <StatusChip status={record.status} />
+                    {record.archived && (
+                      <span className="db-chip bd-chip-archived">Archived</span>
+                    )}
                     {severity && (
                       <span
                         className="db-recent-alert"
