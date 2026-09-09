@@ -41,6 +41,7 @@ import CloudProjectPanel from '../components/cloud-project-panel';
 import ProjectLibrary from '../components/project-library';
 import DoorViewer from './door-viewer';
 import DashboardHome from '../components/dashboard/dashboard';
+import OnboardingProvider, { TourReplayButton } from '../components/onboarding/onboarding';
 import NewProjectDialog, { type NewProjectDetails } from '../components/dashboard/new-project-dialog';
 import type { SessionActivity } from '../components/dashboard/dashboard-types';
 import { useAccessSession } from '../components/auth/access-gate';
@@ -653,7 +654,44 @@ export default function DoorDesigner() {
   );
 
   return (
-    <main className={`app-shell ${isExportingPdf ? 'printing-cutting-plane' : ''}`} data-theme={theme}>
+    <OnboardingProvider
+      hasProject={hasProject}
+      onActivateSection={(section, tool) => {
+        switch (section) {
+          case 'dashboard':
+            goToTab('dashboard');
+            break;
+          case 'details':
+            goToTab('details');
+            break;
+          case 'designs':
+            openDesignTool(tool ?? 'list');
+            goToTab('designs');
+            break;
+          case 'bom':
+            goToTab('bom');
+            break;
+          case 'quotation':
+            goToTab('quotation');
+            break;
+          case 'pos':
+            goToTab('pos');
+            break;
+          case 'finance':
+            goToTab('finance');
+            break;
+          case 'workflow':
+            goToTab('dashboard');
+            break;
+        }
+      }}
+      onFinish={() => {
+        setDesignTool('list');
+        goToTab('dashboard');
+      }}
+      onStartNewProject={openNewProjectDialog}
+    >
+      <main className={`app-shell ${isExportingPdf ? 'printing-cutting-plane' : ''}`} data-theme={theme}>
       {/* Top Application Bar */}
       <header className="topbar">
         <div className="brand" style={{ flexShrink: 0 }}>
@@ -678,6 +716,7 @@ export default function DoorDesigner() {
               <button
                 key={item.key}
                 className={`tab-item ${isActive ? 'active' : ''}`}
+                data-onboard={`nav-${item.go}`}
                 onClick={() => goToTab(item.go)}
                 title={item.label}
                 aria-current={isActive ? 'page' : undefined}
@@ -709,6 +748,8 @@ export default function DoorDesigner() {
               <Moon size={14} /> <span className="seg-txt">Dark</span>
             </button>
           </div>
+
+          <TourReplayButton />
 
           {hasProject && (
             <button className="btn csv-hide" onClick={exportCsv} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
@@ -831,13 +872,14 @@ export default function DoorDesigner() {
                 const Icon = tool.icon;
                 const active = designTool === tool.key;
                 return (
-                  <button
-                    key={tool.key}
-                    type="button"
-                    className={`btn-pill ${active ? 'active' : ''}`}
-                    aria-pressed={active}
-                    onClick={() => openDesignTool(tool.key)}
-                  >
+                <button
+                  key={tool.key}
+                  type="button"
+                  className={`btn-pill ${active ? 'active' : ''}`}
+                  data-onboard={`tool-${tool.key}`}
+                  aria-pressed={active}
+                  onClick={() => openDesignTool(tool.key)}
+                >
                     <Icon size={14} /> {tool.label}
                   </button>
                 );
@@ -1279,6 +1321,7 @@ export default function DoorDesigner() {
               <button
                 key={item.key}
                 type="button"
+                data-onboard={`nav-${item.go}`}
                 className={`bottom-nav-item ${isActive ? 'active' : ''}`}
                 onClick={() => goToTab(item.go)}
                 aria-current={isActive ? 'page' : undefined}
@@ -1292,5 +1335,6 @@ export default function DoorDesigner() {
         </div>
       </nav>
     </main>
+    </OnboardingProvider>
   );
 }
