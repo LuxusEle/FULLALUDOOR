@@ -27,6 +27,12 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
   const [navMode, setNavMode] = useState<'orbit' | 'pan'>('orbit');
   const [activePresetView, setActivePresetView] = useState<'front' | 'side' | 'top' | '3d' | 'section' | 'detail'>('front');
   const controllerRef = useRef<ViewerController | null>(null);
+  const latestRef = useRef({ config, view, theme });
+
+  // Keep the latest props available to the async scene setup (which runs once).
+  useEffect(() => {
+    latestRef.current = { config, view, theme };
+  }, [config, view, theme]);
 
   // Initialize Babylon.js Scene and Controller
   useEffect(() => {
@@ -684,6 +690,12 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
       };
 
       engine.runRenderLoop(() => scene.render());
+
+      // Build the initial model once the scene + controller are ready. The
+      // prop-sync effect below can only rebuild when the controller already
+      // exists, so this seeds the very first door.
+      const initial = latestRef.current;
+      if (!cancelled) void rebuild(initial.config, initial.view, initial.theme);
     };
 
     void setup();
@@ -742,8 +754,8 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
               fontSize: '11.5px',
               fontWeight: 700,
               cursor: 'pointer',
-              background: view === 'assembly' ? '#f59e0b' : 'transparent',
-              color: view === 'assembly' ? '#241505' : '#64748b',
+              background: view === 'assembly' ? '#ff1a1a' : 'transparent',
+              color: view === 'assembly' ? '#1a0303' : '#64748b',
               transition: 'all 0.15s ease'
             }}
           >
@@ -759,8 +771,8 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
               fontSize: '11.5px',
               fontWeight: 700,
               cursor: 'pointer',
-              background: view === 'exploded' ? '#f59e0b' : 'transparent',
-              color: view === 'exploded' ? '#241505' : '#64748b',
+              background: view === 'exploded' ? '#ff1a1a' : 'transparent',
+              color: view === 'exploded' ? '#1a0303' : '#64748b',
               transition: 'all 0.15s ease'
             }}
           >
@@ -776,8 +788,8 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
               fontSize: '11.5px',
               fontWeight: 700,
               cursor: 'pointer',
-              background: view === 'section' ? '#f59e0b' : 'transparent',
-              color: view === 'section' ? '#241505' : '#64748b',
+              background: view === 'section' ? '#ff1a1a' : 'transparent',
+              color: view === 'section' ? '#1a0303' : '#64748b',
               transition: 'all 0.15s ease'
             }}
           >
@@ -800,8 +812,8 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
               fontSize: '11.5px',
               fontWeight: 700,
               cursor: 'pointer',
-              background: navMode === 'orbit' ? '#f59e0b' : 'transparent',
-              color: navMode === 'orbit' ? '#241505' : '#475569',
+              background: navMode === 'orbit' ? '#ff1a1a' : 'transparent',
+              color: navMode === 'orbit' ? '#1a0303' : '#475569',
               transition: 'all 0.15s ease'
             }}
           >
@@ -820,8 +832,8 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
               fontSize: '11.5px',
               fontWeight: 700,
               cursor: 'pointer',
-              background: navMode === 'pan' ? '#f59e0b' : 'transparent',
-              color: navMode === 'pan' ? '#241505' : '#475569',
+              background: navMode === 'pan' ? '#ff1a1a' : 'transparent',
+              color: navMode === 'pan' ? '#1a0303' : '#475569',
               transition: 'all 0.15s ease'
             }}
           >
@@ -875,7 +887,12 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
 
       {/* 3D Canvas */}
       <div style={{ flex: 1, position: 'relative' }}>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }} aria-label="3D Aluminium Door Model" />
+        <canvas
+          id="fullaludoor-studio-canvas"
+          ref={canvasRef}
+          style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
+          aria-label="3D Aluminium Door Model"
+        />
       </div>
 
       {/* Bottom Preset Gallery Bar */}
@@ -903,15 +920,15 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
                   width: 88,
                   height: 50,
                   borderRadius: 9,
-                  border: active ? '1.5px solid #f59e0b' : '1px solid #2e353c',
-                  background: active ? 'rgba(245, 158, 11, 0.14)' : '#1a1f24',
-                  boxShadow: active ? '0 0 0 2px rgba(245, 158, 11, 0.2), 0 4px 12px rgba(0,0,0,0.28)' : 'none',
+                  border: active ? '1.5px solid #ff1a1a' : '1px solid #2e353c',
+                  background: active ? 'rgba(255, 26, 26, 0.14)' : '#1a1f24',
+                  boxShadow: active ? '0 0 0 2px rgba(255, 26, 26, 0.2), 0 4px 12px rgba(0,0,0,0.28)' : 'none',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
               >
                 <PresetIcon id={preset.id} active={active} />
-                <span style={{ fontSize: 9.5, fontWeight: active ? 800 : 600, color: active ? '#fbbf24' : '#aab4c0', letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 9.5, fontWeight: active ? 800 : 600, color: active ? '#ff4d4d' : '#aab4c0', letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
                   {preset.label}
                 </span>
               </button>
@@ -927,7 +944,7 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
 }
 
 function PresetIcon({ id, active }: { id: string; active: boolean }) {
-  const c = active ? '#fbbf24' : '#cbd5e1';
+  const c = active ? '#ff4d4d' : '#cbd5e1';
   const sw = active ? 2.4 : 1.8;
   return (
     <svg viewBox="0 0 48 32" width="34" height="22" aria-hidden style={{ display: 'block', overflow: 'visible' }}>

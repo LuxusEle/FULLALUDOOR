@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { DollarSign, Download, Printer, ShieldCheck, Layers, FileSpreadsheet, Building } from 'lucide-react';
 import type { CommercialQuote, DerivedOpening, MasterBOMItem, ProjectMetadata } from '../lib/types';
+import { PROJECT_CURRENCIES } from '../lib/types';
 import { buildProjectBOM, generateCommercialQuote } from '../lib/bom-engine';
 import type { ProjectNestingSummary } from '../lib/types';
 
@@ -11,9 +12,11 @@ interface CommercialQuoteProps {
   openings: DerivedOpening[];
   nesting: ProjectNestingSummary;
   theme?: 'dark' | 'light';
+  /** Persist a currency change on the current project (no-print control). */
+  onCurrencyChange?: (currency: string) => void;
 }
 
-export default function CommercialQuoteView({ project, openings, nesting, theme = 'dark' }: CommercialQuoteProps) {
+export default function CommercialQuoteView({ project, openings, nesting, theme = 'dark', onCurrencyChange }: CommercialQuoteProps) {
   const [activeTab, setActiveTab] = useState<'quote' | 'bom' | 'glass'>('quote');
   const bom = buildProjectBOM(openings, nesting);
   const quote = generateCommercialQuote(project, openings, bom);
@@ -79,6 +82,26 @@ export default function CommercialQuoteView({ project, openings, nesting, theme 
         </div>
 
         <div className="quote-actions">
+          {onCurrencyChange && (
+            <div className="quote-currency-control">
+              <label htmlFor="quote-currency" className="quote-currency-label">
+                Quote Currency
+              </label>
+              <select
+                id="quote-currency"
+                className="table-select"
+                value={project.currency}
+                onChange={(event) => onCurrencyChange(event.target.value)}
+                title="Currency for this project's quotation & BOM"
+              >
+                {PROJECT_CURRENCIES.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <button className="btn" onClick={exportQuoteCsv} title="Export CSV Quote">
             <Download size={14} /> Export CSV
           </button>

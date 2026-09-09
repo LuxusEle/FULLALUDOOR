@@ -1,16 +1,65 @@
 import type { CommercialQuote, DerivedOpening, MasterBOMItem, ProjectMetadata } from './types';
 import type { ProjectNestingSummary } from './types';
 
+// Sri Lanka market rate card (Sri Lankan Rupees — LKR).
+// Approximate retail/fabricator costs used for the Master Procurement BOM and
+// the per-opening quote. Values are a sensible market benchmark and can be
+// refined here; they are applied identically whichever currency code the
+// project displays.
 export const DEFAULT_RATES = {
-  extrusionPerKg: 4.80, // USD or currency equivalent per kg of raw aluminium
-  powderCoatingPerKg: 1.20, // USD per kg powder coat finish
-  glassClear6mmM2: 24.0, // USD per m²
-  glassTinted8mmM2: 36.0,
-  glassLaminatedM2: 52.0,
-  glassToughened12mmM2: 65.0,
-  glassDguM2: 85.0,
-  laborPerOpening: 45.0, // USD assembly & machining labor
+  extrusionPerKg: 1650.0, // LKR per kg of anodized Alumex-type extrusion
+  powderCoatingPerKg: 450.0, // LKR per kg powder coat finish
+  glassClear6mmM2: 4200.0, // LKR per m² 6 mm clear toughened
+  glassTinted8mmM2: 6500.0,
+  glassLaminatedM2: 9800.0,
+  glassToughened12mmM2: 11000.0,
+  glassDguM2: 14500.0,
+  laborPerOpening: 12000.0, // LKR assembly & machining labour per opening
+  miscPerOpening: 2000.0, // LKR ancillaries / consumables per opening
 };
+
+export const HARDWARE_COSTS_LKR: Record<string, number> = {
+  'HNG-100': 3800.0, // hinge set
+  'LCK-100': 8500.0, // multi-point lock
+  'HND-280': 5400.0, // door handle
+  'CLT-100': 550.0, // aluminium cleat / corner bracket
+  'ROD-M6': 700.0, // M6 tie rod
+  'EPDM-01': 350.0, // EPDM seal (per m)
+  'SCR-ST': 45.0, // stainless screw
+  '70S-1914': 2000.0, // 70S brass v-groove roller
+  '70S-LCK': 4500.0, // 70S sliding lock
+  '70S-WPL': 250.0, // wool pile (per m)
+  '70S-EPDM': 380.0, // 70S EPDM (per m)
+  '100S-ROL': 2200.0, // 100S heavy roller
+  '100S-LCK': 4800.0, // 100S lock
+  '100S-WPL': 250.0,
+  '100S-EPDM': 380.0,
+  'SCR-42': 35.0, // 4.2×38 screw
+  'FLB-200': 2900.0, // floor bolt
+  'ESD-ROL': 1700.0, // espag roller
+  'ESD-LCK': 2400.0,
+  'ESD-WPL': 250.0,
+  'CAS-FS12': 3300.0, // casement fitch fastener
+  'CAS-HND': 4300.0, // casement handle
+  'CAS-EPDM': 380.0,
+  'CAS-CLT': 450.0,
+};
+
+/** Sri Lanka glass rate keyed by thickness + description (LKR/m²). */
+export function glassRateFor(
+  thickness: number,
+  description: string,
+  rates = DEFAULT_RATES
+): number {
+  const label = description.toLowerCase();
+  if (thickness >= 20 || label.includes('dgu') || label.includes('double glaz')) {
+    return rates.glassDguM2;
+  }
+  if (label.includes('laminat')) return rates.glassLaminatedM2;
+  if (thickness >= 12) return rates.glassToughened12mmM2;
+  if (thickness >= 8 && label.includes('tint')) return rates.glassTinted8mmM2;
+  return rates.glassClear6mmM2;
+}
 
 export function buildProjectBOM(
   openings: DerivedOpening[],
@@ -48,7 +97,7 @@ export function buildProjectBOM(
   }
 
   for (const [_key, g] of glassGroups.entries()) {
-    const rate = g.thickness >= 12 ? rates.glassToughened12mmM2 : rates.glassClear6mmM2;
+    const rate = glassRateFor(g.thickness, g.desc, rates);
     const cost = Number((g.areaM2 * rate).toFixed(2));
     bom.push({
       category: 'Glass',
@@ -76,35 +125,8 @@ export function buildProjectBOM(
     }
   }
 
-  const hardCosts: Record<string, number> = {
-    'HNG-100': 12.5,
-    'LCK-100': 28.0,
-    'HND-280': 18.0,
-    'CLT-100': 1.8,
-    'ROD-M6': 2.4,
-    'EPDM-01': 1.1,
-    'SCR-ST': 0.15,
-    '70S-1914': 6.5,
-    '70S-LCK': 14.0,
-    '70S-WPL': 0.8,
-    '70S-EPDM': 1.2,
-    '100S-ROL': 7.5,
-    '100S-LCK': 16.0,
-    '100S-WPL': 0.8,
-    '100S-EPDM': 1.2,
-    'SCR-42': 0.12,
-    'FLB-200': 9.5,
-    'ESD-ROL': 5.5,
-    'ESD-LCK': 8.0,
-    'ESD-WPL': 0.8,
-    'CAS-FS12': 11.0,
-    'CAS-HND': 14.5,
-    'CAS-EPDM': 1.2,
-    'CAS-CLT': 1.5,
-  };
-
   for (const [code, item] of hardwareMap.entries()) {
-    const unitPrice = hardCosts[code] || 4.5;
+    const unitPrice = HARDWARE_COSTS_LKR[code] || 1200;
     const tot = Number((item.qty * unitPrice).toFixed(2));
     bom.push({
       category: item.category,
@@ -145,12 +167,16 @@ export function generateCommercialQuote(
   const laborAssemblyCost = openings.reduce((acc, o) => acc + o.config.quantity * rates.laborPerOpening, 0);
 
   const items = openings.map((op) => {
+    const glassAreaCost = op.glassPanels.reduce(
+      (sum, panel) => sum + panel.areaM2 * glassRateFor(panel.thickness, panel.description, rates),
+      0
+    );
     const unitPrice = Number(
       (
         op.totalAluWeightKg * (rates.extrusionPerKg + rates.powderCoatingPerKg) +
-        op.glassPanels.reduce((s, g) => s + g.areaM2 * rates.glassClear6mmM2, 0) +
+        glassAreaCost +
         rates.laborPerOpening +
-        35
+        rates.miscPerOpening
       ).toFixed(2)
     );
     return {

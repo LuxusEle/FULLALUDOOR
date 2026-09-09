@@ -65,15 +65,32 @@ Routes: `/` workspace · `/login` · `/admin` device administration ·
 
 ## 5. Access control (device-bound)
 
-The UI is never the authorization boundary. Access is enforced in the database:
+The UI is never the authorization boundary. Access is enforced in the database
+via SECURITY DEFINER RPCs. The per-account login verdict, in order of precedence:
 
-- **hybrid_windows** (default): sign-in resolves a `windows_agent` enrollment
-  keyed to the native agent's device id. The gate challenges the agent, the DB
-  verifies the Ed25519 signature, and only approved + active accounts render.
-  Devices start PENDING and are approved in `/admin`.
-- **browser_legacy**: optional per-browser token mode (operator choice).
-- Admin RPCs (`admin_list_devices`, `admin_device_action`, …) require the
-  caller's own approved device **and** the `admin` role in `profiles`.
+- **Active admin** (`profiles.role = 'admin'`, status `active`): signs in with
+  email + password only — no device enrollment, approval, or attestation
+  required (`20260908000006_admin_password_only_access.sql`).
+- **Non-admin with Windows agent present**: `hybrid_windows` (default) `windows_agent`
+  enrollment keyed to the native agent's device id. The gate challenges the
+  agent, the DB verifies the fresh Ed25519 signature (a `last_attested_at` TTL
+  is enforced), and only approved + active accounts render.
+- **No agent (Android, iOS, any browser, Windows without the agent)**:
+  browser-token enrollment fallback. The browser registers a PENDING `browser`
+  device; an admin approves it in `/admin`; once approved it is granted access
+  under the `browser_legacy` verdict path even in `hybrid_windows` deployments
+  (`20260908000007_browser_device_approval_fallback.sql`).
+
+Invariants preserved across all modes: new devices are never auto-approved —
+they start PENDING and are approved in `/admin`; Windows devices keep the
+fresh-proof requirement; `assert_device_approved` still demands an approved row
+for non-admins (an active admin short-circuits to true).
+
+Admin RPCs (`admin_list_devices`, `admin_device_action`, `admin_delete_device`,
+…) assert the caller is an approved active admin (`assert_device_approved` +
+`is_admin`). `admin_delete_device` permanently removes a `user_devices` row
+(audited first) so the device must be re-registered on next login.
+
 - The first administrator bootstraps via `become_first_admin` (shown as
   "Initialize this deployment" when no admin exists).
 - Recovery for a revoked sole-admin device lives in
@@ -95,6 +112,9 @@ supabase\
                     20260908000001_approve_initial_admin.sql
                     20260908000002…00004   pgsodium enablement
                     20260908000005_approve_admin_recovery.sql
+                    20260908000006_admin_password_only_access.sql
+                    20260908000007_browser_device_approval_fallback.sql
+                    20260908000008_admin_delete_device.sql
   schema.sql        Schema reference
 ```
 

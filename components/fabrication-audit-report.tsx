@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { DerivedOpening, OpeningItem, ProjectMetadata } from '../lib/types';
 import { deriveDoor } from '../lib/door-model';
+import { captureStudioCanvasNow, loadStudioSnapshot } from '../lib/studio-snapshot';
 import {
   DXF_70S_1001_1,
   DXF_70S_1101_1,
@@ -54,6 +55,14 @@ export default function FabricationAuditReport({
   >('all');
   const [canvasSnapshot, setCanvasSnapshot] = useState<string | null>(null);
   const [highlightedPart, setHighlightedPart] = useState<number | null>(null);
+  const [captureStatus, setCaptureStatus] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
+
+  // If the user has visited the 3D Studio this session, restore the last frame
+  // so Sheet 2 already shows a real render without requiring a manual capture.
+  useEffect(() => {
+    const stored = loadStudioSnapshot();
+    if (stored) setCanvasSnapshot(stored);
+  }, []);
 
   // Active opening model
   const activeOpening = openings.find((o) => o.tag === selectedTag) || openings[0];
@@ -67,22 +76,42 @@ export default function FabricationAuditReport({
 
   // Handler for printing / Save as PDF
   const handlePrint = () => {
-    window.print();
+    // Re-capture a fresh frame (if the Studio canvas is mounted) before printing,
+    // then give the browser a frame to paint the <img> into the sheet.
+    const live = captureStudioCanvasNow();
+    if (live) setCanvasSnapshot(live);
+    setCaptureStatus(null);
+    window.setTimeout(() => {
+      try {
+        window.print();
+      } catch {
+        setCaptureStatus({
+          tone: 'warn',
+          text: 'Your browser blocked printing. Press Ctrl/Cmd + P instead.',
+        });
+      }
+    }, 80);
   };
 
-  // Capture current Babylon.js canvas snapshot if available on page
+  // Capture current Babylon.js canvas snapshot (Studio must have been visited so
+  // its last rendered frame is available to this tab).
   const handleCaptureStudioCanvas = () => {
-    try {
-      const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-      if (canvas) {
-        const dataUrl = canvas.toDataURL('image/png');
-        setCanvasSnapshot(dataUrl);
-      } else {
-        alert('Could not find active 3D Studio canvas. Ensure 3D viewport was loaded.');
-      }
-    } catch {
-      alert('Unable to capture 3D canvas due to browser security context.');
+    const live = captureStudioCanvasNow();
+    if (live) {
+      setCanvasSnapshot(live);
+      setCaptureStatus({ tone: 'ok', text: '3D Studio snapshot captured and embedded in Sheet 2.' });
+      return;
     }
+    const stored = loadStudioSnapshot();
+    if (stored) {
+      setCanvasSnapshot(stored);
+      setCaptureStatus({ tone: 'ok', text: 'Embedded the latest 3D Studio render from this session.' });
+      return;
+    }
+    setCaptureStatus({
+      tone: 'warn',
+      text: 'No 3D Studio render is available yet. Open the 3D Studio tab once, then return here and press Capture again.',
+    });
   };
 
   // Helper to get matching DXF profile SVG data
@@ -219,6 +248,23 @@ export default function FabricationAuditReport({
             <span>Print / Save PDF</span>
           </button>
         </div>
+
+        {captureStatus && (
+          <p
+            className="audit-capture-status"
+            aria-live="polite"
+            style={{
+              flexBasis: '100%',
+              margin: 0,
+              fontSize: 11.5,
+              fontWeight: 600,
+              lineHeight: 1.4,
+              color: captureStatus.tone === 'ok' ? 'var(--green)' : '#f0b400',
+            }}
+          >
+            {captureStatus.text}
+          </p>
+        )}
       </header>
 
       {/* ========================================================================= */}

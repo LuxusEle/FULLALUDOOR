@@ -7,6 +7,9 @@ export type TypologyId =
   | '74-cgroove'
   | 'casement';
 
+export const PROJECT_CURRENCIES = ['LKR', 'USD', 'EUR', 'GBP', 'AED', 'INR'] as const;
+export type ProjectCurrency = (typeof PROJECT_CURRENCIES)[number];
+
 export const TYPOLOGY_IDS = [
   '100D-single',
   '100D-double',

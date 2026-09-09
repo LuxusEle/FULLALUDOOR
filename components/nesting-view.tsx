@@ -94,6 +94,11 @@ export default function NestingView({ cuts }: NestingViewProps) {
     window.print();
   };
 
+  const csvCell = (value: string | number | undefined): string => {
+    const text = String(value ?? '');
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
   const exportCuttingPlanCsv = () => {
     const rows: string[][] = [];
     rows.push([
@@ -113,11 +118,7 @@ export default function NestingView({ cuts }: NestingViewProps) {
 
     for (const profile of summary.resultsByProfile) {
       for (const bar of profile.bars) {
-        const meta = [
-          String(bar.barIndex),
-          profile.profileCode,
-          `"${profile.profileDescription}"`,
-        ];
+        const meta = [String(bar.barIndex), profile.profileCode, profile.profileDescription];
         let pos = 0;
         bar.cuts.forEach((cut, stepIndex) => {
           const kerf = stepIndex === 0 ? 0 : profile.bladeKerfMm;
@@ -127,7 +128,7 @@ export default function NestingView({ cuts }: NestingViewProps) {
             String(stepIndex + 1),
             cut.cutId,
             cut.openingTag,
-            `"${cut.pieceDescription}"`,
+            cut.pieceDescription,
             String(cut.lengthMm),
             String(cut.angleL),
             String(cut.angleR),
@@ -143,7 +144,9 @@ export default function NestingView({ cuts }: NestingViewProps) {
       }
     }
 
-    const csvContent = rows.map((row) => row.join(',')).join('\n');
+    // UTF-8 BOM + CRLF so Excel / Google Sheets display the text correctly.
+    const csvContent =
+      '\uFEFF' + rows.map((row) => row.map((cell) => csvCell(cell)).join(',')).join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
