@@ -51,9 +51,13 @@ import {
   listLocalProjects,
   loadCloudProject,
   loadLocalProject,
+  loadProjectByRef,
   saveCloudProject,
   saveLocalProject,
 } from '../lib/project-storage';
+import { ROUTES, classifyProjectLoadError, projectWorkspacePath } from '../lib/project-routing';
+import { buildBlankOpening } from '../lib/project-creation';
+import WorkspaceState, { type WorkspaceStateKind } from '../components/project/workspace-state';
 import { captureStudioCanvasNow } from '../lib/studio-snapshot';
 import { nextProjectNumber } from '../lib/project-catalog';
 import { buildManufacturingDossier, type ManufacturingDossier } from '../lib/manufacturing-dossier';
@@ -63,7 +67,6 @@ import { defaultDoorConfig, deriveDoor, doorConfigSchema, fabricationChecks } fr
 import type { DerivedOpening, OpeningItem, ProjectMetadata, TypologyId, ProjectNestingSummary } from '../lib/types';
 import type { StoredProject, StoredProjectRef } from '../lib/project-storage';
 import { nestProjectCuts } from '../lib/nesting-engine';
-import { TYPOLOGY_LABELS } from '../components/project-schedule';
 
 export type WorkspaceTab = 'dashboard' | 'details' | 'designs' | 'bom' | 'quotation' | 'pos' | 'finance';
 
@@ -72,18 +75,12 @@ export type DesignTool = 'list' | 'studio' | 'cad' | 'audit' | 'nesting';
 
 const THEME_STORAGE_KEY = 'fullaludoor.theme.v1';
 
-const SYSTEM_DEFAULT_SIZE: Record<TypologyId, { width: number; height: number }> = {
-  '100D-single': { width: 900, height: 2100 },
-  '100D-double': { width: 1800, height: 2100 },
-  '100S-sliding-2p': { width: 2400, height: 2100 },
-  '70S-sliding-2p': { width: 1800, height: 2100 },
-  '70S-sliding-4p': { width: 3200, height: 2200 },
-  '74-cgroove': { width: 1800, height: 1500 },
-  casement: { width: 800, height: 1200 },
-};
+export interface DoorDesignerProps {
+  /** Stored project id from the /project/[projectId] route. */
+  initialProjectId?: string;
+}
 
-const isWindowSystem = (system: TypologyId) =>
-  system === 'casement' || system.startsWith('70S') || system.startsWith('100S');
+type WorkspaceLoadState = WorkspaceStateKind | 'ready';
 
 declare global {
   interface Document {
@@ -92,7 +89,9 @@ declare global {
   }
 }
 
-export default function DoorDesigner() {
+export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
+  const requestedProjectId =
+    typeof initialProjectId === 'string' && initialProjectId.length > 0 ? initialProjectId : null;
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
   const [designTool, setDesignTool] = useState<DesignTool>('list');
   const [projectsOpen, setProjectsOpen] = useState(false);
@@ -107,6 +106,9 @@ export default function DoorDesigner() {
   const [openings, setOpenings] = useState<OpeningItem[]>([]);
   const [activeOpeningId, setActiveOpeningId] = useState<string | null>(null);
   const [projectRef, setProjectRef] = useState<StoredProjectRef | null>(null);
+  const [projectLoad, setProjectLoad] = useState<WorkspaceLoadState>(requestedProjectId ? 'loading' : 'ready');
+  const [projectLoadMessage, setProjectLoadMessage] = useState<string | null>(null);
+  const [projectLoadRetry, setProjectLoadRetry] = useState(0);
   const [activities, setActivities] = useState<SessionActivity[]>([]);
 
   const activityIdRef = useRef(0);
@@ -324,23 +326,66 @@ export default function DoorDesigner() {
     [applyStoredProject, logActivity, goToTab]
   );
 
-  const buildBlankUnit = (system: TypologyId, nextIndex: number): OpeningItem => {
-    const size = SYSTEM_DEFAULT_SIZE[system];
-    const prefix = isWindowSystem(system) ? 'W' : 'D';
-    return {
-      id: `open-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      tag: `${prefix}-${String(nextIndex).padStart(2, '0')}`,
-      name: TYPOLOGY_LABELS[system],
-      system,
-      width: size.width,
-      height: size.height,
-      quantity: 1,
-      finish: 'natural',
-      glass: '6mm-clear',
-      location: 'Ground Floor',
-      hingeSide: 'left',
+  // Resolve the project named in the URL. A missing project or a storage
+  // failure is surfaced explicitly instead of silently loading another one.
+  useEffect(() => {
+    if (!requestedProjectId) return undefined;
+    let active = true;
+    void (async () => {
+      try {
+        setProjectLoad('loading');
+        setProjectLoadMessage(null);
+        const user = demoMode ? null : await getCurrentUser();
+        let ref: StoredProjectRef | null =
+          listLocalProjects().find((item) => item.id === requestedProjectId) ?? null;
+        if (!ref && user && !demoMode) {
+          const cloudRefs = await listCloudProjects(user);
+          ref = cloudRefs.find((item) => item.id === requestedProjectId) ?? null;
+        }
+        if (!ref) {
+          if (!active) return;
+          setProjectLoad('not-found');
+          setProjectLoadMessage('This project does not exist or is not shared with your account.');
+          return;
+        }
+        const result = await loadProjectByRef(ref, user);
+        if (!active) return;
+        if (!result.ok || !result.doc) {
+          setProjectLoad(classifyProjectLoadError(result.message));
+          setProjectLoadMessage(result.message);
+          return;
+        }
+        applyStoredProject(result.doc, ref);
+        logActivity(
+          'opened',
+          'Project opened',
+          result.doc.project.projectName,
+          ref.kind === 'cloud' ? 'Cloud copy' : 'Browser copy'
+        );
+        setDesignTool('list');
+        setActiveTab('designs');
+        setProjectLoad('ready');
+      } catch (error) {
+        if (!active) return;
+        const message = error instanceof Error ? error.message : 'The project failed to load.';
+        setProjectLoad(classifyProjectLoadError(message));
+        setProjectLoadMessage(message);
+      }
+    })();
+    return () => {
+      active = false;
     };
-  };
+  }, [requestedProjectId, demoMode, applyStoredProject, logActivity, projectLoadRetry]);
+
+  // Keep the URL in sync with the project actually open (create, autosave or
+  // opening another project from the library) so a refresh reloads it.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !projectRef) return;
+    const desired = projectWorkspacePath(projectRef.id);
+    if (window.location.pathname !== desired) {
+      window.history.replaceState(null, '', desired);
+    }
+  }, [projectRef]);
 
   const collectExistingProjectNumbers = useCallback(async (): Promise<string[]> => {
     const existing: string[] = [];
@@ -386,7 +431,7 @@ export default function DoorDesigner() {
       taxRatePercent: details.taxRatePercent,
       contractorName: details.contractorName || 'ALU DOOR Pro Engineering',
     };
-    const firstUnit = buildBlankUnit('100D-single', 1);
+    const firstUnit = buildBlankOpening('100D-single', 1, now.getTime());
     setProject(freshProject);
     setOpenings([firstUnit]);
     setProjectRef(null);
@@ -653,6 +698,20 @@ export default function DoorDesigner() {
     </section>
   );
 
+  const workspaceState: WorkspaceStateKind | null =
+    !project && requestedProjectId && projectLoad !== 'ready' ? projectLoad : null;
+
+  if (workspaceState) {
+    return (
+      <WorkspaceState
+        state={workspaceState}
+        message={projectLoadMessage}
+        projectId={requestedProjectId}
+        onRetry={() => setProjectLoadRetry((value) => value + 1)}
+      />
+    );
+  }
+
   return (
     <OnboardingProvider
       hasProject={hasProject}
@@ -797,6 +856,32 @@ export default function DoorDesigner() {
           )}
         </div>
       </header>
+
+      {hasProject && project && (
+        <nav className="workspace-crumbs" aria-label="Breadcrumb">
+          <div className="workspace-crumbs-path">
+            <a href={ROUTES.dashboard} className="workspace-crumb-link">
+              Dashboard
+            </a>
+            <span className="workspace-crumb-sep" aria-hidden="true">
+              /
+            </span>
+            <a href={ROUTES.projects} className="workspace-crumb-link">
+              Projects
+            </a>
+            <span className="workspace-crumb-sep" aria-hidden="true">
+              /
+            </span>
+            <span className="workspace-crumb-current" title={project.projectName}>
+              {project.projectName}
+            </span>
+            {project.projectNumber && <span className="workspace-crumb-rev mono">{project.projectNumber}</span>}
+          </div>
+          <a href={ROUTES.projects} className="workspace-back">
+            <ChevronsLeft size={14} /> Back to Projects
+          </a>
+        </nav>
+      )}
 
       {activeTab === 'dashboard' ? (
         <DashboardHome

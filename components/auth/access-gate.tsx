@@ -47,6 +47,7 @@ import {
   submitCredentials,
   type LoginMode,
 } from './gate-screens';
+import ThemeToggle from '../theme-toggle';
 
 export interface AccessSessionValue {
   role: UserRole | null;
@@ -352,6 +353,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
   if (gate === null || !authReady || attesting) {
     return (
       <div className="gate-page">
+        <ThemeToggle className="gate-theme-floating" />
         <LoadingView message={attesting ? 'Verifying this Windows device…' : undefined} />
       </div>
     );
@@ -361,6 +363,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
     case 'login':
       return (
         <div className="gate-page">
+          <ThemeToggle className="gate-theme-floating" />
           <LoginView busy={loginBusy} error={loginError} message={loginMessage} onSubmit={handleCredentials} />
         </div>
       );
@@ -369,6 +372,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
     case 'unsupported':
       return (
         <div className="gate-page">
+          <ThemeToggle className="gate-theme-floating" />
           <AgentRequiredPanel
             busy={checking}
             onRetry={() => void handleRetry()}
@@ -383,6 +387,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
     case 'pending':
       return (
         <div className="gate-page">
+          <ThemeToggle className="gate-theme-floating" />
           <StatusPanel
             tone="pending"
             email={user?.email}
@@ -424,6 +429,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
     case 'denied':
       return (
         <div className="gate-page">
+          <ThemeToggle className="gate-theme-floating" />
           <StatusPanel tone="denied" email={user?.email} deviceName={payload?.deviceName} busy={checking} onLogout={() => void handleLogout()} />
         </div>
       );
@@ -431,6 +437,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
     case 'revoked':
       return (
         <div className="gate-page">
+          <ThemeToggle className="gate-theme-floating" />
           <StatusPanel tone="revoked" email={user?.email} deviceName={payload?.deviceName} busy={checking} onCheck={() => void handleRetry()} checkLabel="Check approval status" onLogout={() => void handleLogout()} />
         </div>
       );
@@ -438,6 +445,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
     case 'disabled':
       return (
         <div className="gate-page">
+          <ThemeToggle className="gate-theme-floating" />
           <StatusPanel tone="disabled" email={user?.email} busy={checking} onLogout={() => void handleLogout()} />
         </div>
       );
@@ -445,6 +453,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
     case 'error':
       return (
         <div className="gate-page">
+          <ThemeToggle className="gate-theme-floating" />
           <ErrorPanel
             message={payload?.error ?? agentError ?? 'The server could not verify this device. Try again.'}
             onRetry={() => void handleRetry()}
@@ -460,6 +469,7 @@ export default function AccessGate({ children, requireAdmin = false }: AccessGat
       if (requireAdmin && !isAdmin) {
         return (
           <div className="gate-page">
+            <ThemeToggle className="gate-theme-floating" />
             <AdminRequiredPanel email={user?.email} />
           </div>
         );

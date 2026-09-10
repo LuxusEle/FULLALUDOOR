@@ -229,9 +229,9 @@ export default function AdminDevicePanel() {
   return (
     <div className="admin-page">
       <header className="admin-topbar">
-        <a href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#9aa5b1', textDecoration: 'none', fontSize: 12.5, fontWeight: 700 }}>
+        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#9aa5b1', textDecoration: 'none', fontSize: 12.5, fontWeight: 700 }}>
           <ArrowLeft size={15} />
-          Workspace
+          Dashboard
         </a>
         <ShieldCheck size={17} style={{ color: '#fbbf24' }} />
         <span className="admin-title">Device Administration</span>

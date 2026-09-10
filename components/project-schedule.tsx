@@ -3,7 +3,10 @@
 import React, { useState } from 'react';
 import { Copy, Eye, Plus, Trash2, Layers, Building2, Calendar, Hash } from 'lucide-react';
 import type { DerivedOpening, FinishType, GlassType, OpeningItem, ProjectMetadata, TypologyId } from '../lib/types';
+import { TYPOLOGY_LABELS } from '../lib/types';
 import { deriveDoor } from '../lib/door-model';
+
+export { TYPOLOGY_LABELS };
 
 interface ProjectScheduleProps {
   project: ProjectMetadata;
@@ -13,16 +16,6 @@ interface ProjectScheduleProps {
   activeOpeningId: string;
   onSelectOpening: (id: string) => void;
 }
-
-export const TYPOLOGY_LABELS: Record<TypologyId, string> = {
-  '100D-single': '100 mm Single Leaf Swing Door',
-  '100D-double': '100 mm Double Leaf Swing Door',
-  '100S-sliding-2p': '100 mm Advance 2-Panel Sliding Door/Window (SD)',
-  '70S-sliding-2p': '70S 2-Track 2-Panel Sliding Door',
-  '70S-sliding-4p': '70S 2-Track 4-Panel Sliding Door (OXXO)',
-  '74-cgroove': '74 mm C-Groove Residential Slider',
-  'casement': 'Casement / Projected Awning Window',
-};
 
 export default function ProjectSchedule({
   project,

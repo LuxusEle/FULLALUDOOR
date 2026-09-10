@@ -379,9 +379,9 @@ export function AdminRequiredPanel({ email }: AdminRequiredPanelProps) {
         This area is restricted to FullAluDoor administrators. Your account{email ? ` (${email})` : ''} does not
         have administrator privileges.
       </p>
-      <a href="/" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
+      <a href="/dashboard" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
         <CheckCircle2 size={15} />
-        Back to the workspace
+        Back to the dashboard
       </a>
     </div>
   );
@@ -402,9 +402,9 @@ export function ApprovedInsidePanel() {
       <p className="gate-lead">
         This device is approved and your account is active. Open the FullAluDoor workspace to continue.
       </p>
-      <a href="/" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
+      <a href="/dashboard" className="gate-btn gate-btn-primary" style={{ textDecoration: 'none' }}>
         <CheckCircle2 size={15} />
-        Open the workspace
+        Open the dashboard
       </a>
     </div>
   );

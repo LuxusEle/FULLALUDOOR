@@ -133,18 +133,31 @@ export function catalogStatus(doc: StoredProject): CatalogStatus {
   return hasNonInfoIssue ? 'review' : 'in-progress';
 }
 
+/** Fabrication-facing status label derived from real validation signals only. */
+export type FabricationStatus = 'DRAFT' | 'IN PROGRESS' | 'REQUIRES REVIEW';
+
+export function fabricationStatusLabel(status: CatalogStatus): FabricationStatus {
+  if (status === 'review') return 'REQUIRES REVIEW';
+  if (status === 'in-progress') return 'IN PROGRESS';
+  return 'DRAFT';
+}
+
 /** Normalized row the Dashboard renders (built from a real ref + document). */
 export interface CatalogRecord {
   id: string;
   name: string;
   clientName: string;
   projectNumber: string;
+  siteAddress: string;
+  projectDate: string;
+  revision: string;
   savedAt: string;
   kind: 'cloud' | 'local';
   openingCount: number;
   totalLeaves: number;
   issues: ProjectIssue[];
   status: CatalogStatus;
+  fabricationStatus: FabricationStatus;
   archived: boolean;
 }
 
@@ -181,22 +194,33 @@ export function nextProjectNumber(existing: string[], now = new Date()): string 
   return formatProjectNumber(year, seq);
 }
 
+export function projectRevision(doc: StoredProject): string {
+  const number = doc.project.projectNumber?.trim() || 'PROJECT';
+  const date = doc.project.date ? doc.project.date.replaceAll('-', '') : '';
+  return date ? `${number}-${date}` : `${number}-R0`;
+}
+
 export function toCatalogRecord(
   doc: StoredProject,
   ref: { id: string; savedAt: string; kind: 'cloud' | 'local'; name: string }
 ): CatalogRecord {
   const issues = deriveProjectIssues(doc);
+  const status = catalogStatus(doc);
   return {
     id: ref.id,
     name: doc.project.projectName || ref.name,
     clientName: doc.project.clientName,
     projectNumber: doc.project.projectNumber,
+    siteAddress: doc.project.siteAddress ?? '',
+    projectDate: doc.project.date,
+    revision: projectRevision(doc),
     savedAt: ref.savedAt,
     kind: ref.kind,
     openingCount: doc.openings.length,
     totalLeaves: doc.openings.reduce((sum, o) => sum + (o.quantity || 0), 0),
     issues,
-    status: catalogStatus(doc),
+    status,
+    fabricationStatus: fabricationStatusLabel(status),
     archived: doc.project.archived === true,
   };
 }

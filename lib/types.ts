@@ -20,6 +20,16 @@ export const TYPOLOGY_IDS = [
   'casement',
 ] as const satisfies readonly TypologyId[];
 
+export const TYPOLOGY_LABELS: Record<TypologyId, string> = {
+  '100D-single': '100 mm Single Leaf Swing Door',
+  '100D-double': '100 mm Double Leaf Swing Door',
+  '100S-sliding-2p': '100 mm Advance 2-Panel Sliding Door/Window (SD)',
+  '70S-sliding-2p': '70S 2-Track 2-Panel Sliding Door',
+  '70S-sliding-4p': '70S 2-Track 4-Panel Sliding Door (OXXO)',
+  '74-cgroove': '74 mm C-Groove Residential Slider',
+  casement: 'Casement / Projected Awning Window',
+};
+
 export type FinishType = 'natural' | 'black' | 'bronze' | 'white';
 
 export type GlassType =

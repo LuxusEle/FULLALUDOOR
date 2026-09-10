@@ -1,10 +1,8 @@
-import AccessGate from '../components/auth/access-gate';
-import DoorDesigner from './door-designer';
+import { redirect } from 'next/navigation';
 
+// The workspace is now project-scoped at /project/[projectId]. The application
+// root sends authenticated (and unauthenticated) users to the dashboard.
 export default function Home() {
-  return (
-    <AccessGate>
-      <DoorDesigner />
-    </AccessGate>
-  );
+  redirect('/dashboard');
+  return null;
 }

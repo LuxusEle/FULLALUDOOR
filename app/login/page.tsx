@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import AccessGate from '../../components/auth/access-gate';
-import { ApprovedInsidePanel } from '../../components/auth/gate-screens';
+import PostAuthRedirect from '../../components/auth/post-auth-redirect';
 
 export const metadata: Metadata = {
   title: 'Sign in | FullAluDoor',
@@ -10,7 +10,7 @@ export default function LoginPage() {
   return (
     <AccessGate>
       <div className="gate-page">
-        <ApprovedInsidePanel />
+        <PostAuthRedirect />
       </div>
     </AccessGate>
   );
