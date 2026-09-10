@@ -1214,7 +1214,15 @@ export default function DoorDesigner() {
           {/* ========================================================================= */}
           {/* DESIGNS → 2D VECTOR CAD CONSTRUCTION DOCUMENTS                             */}
           {/* ========================================================================= */}
-          {activeTab === 'designs' && designTool === 'cad' && activeOpening && <VectorCadDrawings opening={activeOpening} theme={theme} />}
+          {activeTab === 'designs' && designTool === 'cad' && activeOpening && (
+            <VectorCadDrawings
+              opening={activeOpening}
+              theme={theme}
+              project={project}
+              openings={openings}
+              onSelectOpening={handleSelectOpening}
+            />
+          )}
 
           {/* ========================================================================= */}
           {/* DESIGNS → CUTTING / NESTING                                               */}
