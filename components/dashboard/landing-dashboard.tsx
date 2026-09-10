@@ -4,7 +4,7 @@
 // the engineering workspace lives at /project/[projectId].
 
 import { useMemo, useState } from 'react';
-import { ArrowRight, FolderOpen, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowRight, FolderOpen, Plus } from 'lucide-react';
 import type { CatalogRecord } from '../../lib/project-catalog';
 import { catalogTotals } from '../../lib/project-catalog';
 import { ROUTES, projectWorkspacePath } from '../../lib/project-routing';
@@ -97,6 +97,10 @@ export default function LandingDashboard() {
         />
 
         <div className="landing-actions">
+          <a className="landing-back" href={ROUTES.projects}>
+            <ArrowLeft size={15} strokeWidth={2.6} />
+            Back to Projects
+          </a>
           <button type="button" className="btn btn-primary" onClick={() => setNewProjectOpen(true)} disabled={busy}>
             <Plus size={15} strokeWidth={2.6} /> Create New Project
           </button>

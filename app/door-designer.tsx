@@ -57,6 +57,7 @@ import {
 } from '../lib/project-storage';
 import { ROUTES, classifyProjectLoadError, projectWorkspacePath } from '../lib/project-routing';
 import { buildBlankOpening } from '../lib/project-creation';
+import { applyTheme, readStoredTheme } from '../lib/theme';
 import WorkspaceState, { type WorkspaceStateKind } from '../components/project/workspace-state';
 import { captureStudioCanvasNow } from '../lib/studio-snapshot';
 import { nextProjectNumber } from '../lib/project-catalog';
@@ -72,8 +73,6 @@ export type WorkspaceTab = 'dashboard' | 'details' | 'designs' | 'bom' | 'quotat
 
 /** Manufacturing tools that live inside the Designs section. */
 export type DesignTool = 'list' | 'studio' | 'cad' | 'audit' | 'nesting';
-
-const THEME_STORAGE_KEY = 'fullaludoor.theme.v1';
 
 export interface DoorDesignerProps {
   /** Stored project id from the /project/[projectId] route. */
@@ -97,11 +96,7 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const { role: accessRole } = useAccessSession();
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    if (typeof window === 'undefined') return 'dark';
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === 'light' || stored === 'dark' ? stored : 'dark';
-  });
+  const [theme, setTheme] = useState<'dark' | 'light'>(readStoredTheme);
   const [project, setProject] = useState<ProjectMetadata | null>(null);
   const [openings, setOpenings] = useState<OpeningItem[]>([]);
   const [activeOpeningId, setActiveOpeningId] = useState<string | null>(null);
@@ -221,8 +216,7 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
   // ---------------------------------------------------------------------------
   const setThemeTo = (nextTheme: 'dark' | 'light') => {
     setTheme(nextTheme);
-    document.documentElement.setAttribute('data-theme', nextTheme);
-    window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    applyTheme(nextTheme);
   };
 
   useEffect(() => {
