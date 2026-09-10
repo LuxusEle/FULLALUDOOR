@@ -40,7 +40,7 @@ import FinanceSummaryPanel from '../components/project/finance-summary';
 import CloudProjectPanel from '../components/cloud-project-panel';
 import ProjectLibrary from '../components/project-library';
 import DoorViewer from './door-viewer';
-import DashboardHome from '../components/dashboard/dashboard';
+import ProjectDashboard, { type ProjectNavTarget } from '../components/dashboard/project-dashboard';
 import OnboardingProvider, { TourReplayButton } from '../components/onboarding/onboarding';
 import NewProjectDialog, { type NewProjectDetails } from '../components/dashboard/new-project-dialog';
 import type { SessionActivity } from '../components/dashboard/dashboard-types';
@@ -92,7 +92,7 @@ declare global {
 export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
   const requestedProjectId =
     typeof initialProjectId === 'string' && initialProjectId.length > 0 ? initialProjectId : null;
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(requestedProjectId ? 'designs' : 'dashboard');
   const [designTool, setDesignTool] = useState<DesignTool>('list');
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -296,6 +296,61 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
       focusConfig(target);
     },
     [openings, focusConfig]
+  );
+
+  // Navigation targets used by the project-scoped dashboard. Each maps onto the
+  // existing workspace sections — no new pages are created.
+  const navigateProject = useCallback(
+    (target: ProjectNavTarget) => {
+      switch (target) {
+        case 'details':
+          goToTab('details');
+          return;
+        case 'designs':
+        case 'schedule':
+          setDesignTool('list');
+          goToTab('designs');
+          return;
+        case 'bom':
+          goToTab('bom');
+          return;
+        case 'quotation':
+          goToTab('quotation');
+          return;
+        case 'pos':
+          goToTab('pos');
+          return;
+        case 'finance':
+          goToTab('finance');
+          return;
+        case 'studio':
+          setDesignTool('studio');
+          goToTab('designs');
+          return;
+        case 'cad':
+          setDesignTool('cad');
+          goToTab('designs');
+          return;
+        case 'nesting':
+          setDesignTool('nesting');
+          goToTab('designs');
+          return;
+        case 'audit':
+          setDesignTool('audit');
+          goToTab('designs');
+          return;
+      }
+    },
+    [goToTab]
+  );
+
+  const openProjectOpening = useCallback(
+    (id: string) => {
+      handleSelectOpening(id);
+      setDesignTool('list');
+      goToTab('designs');
+    },
+    [handleSelectOpening, goToTab]
   );
 
   const applyStoredProject = useCallback(
@@ -883,41 +938,17 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
         </nav>
       )}
 
-      {activeTab === 'dashboard' ? (
-        <DashboardHome
+      {activeTab === 'dashboard' && project && manufacturingDossier ? (
+        <ProjectDashboard
           project={project}
-          projectRef={projectRef}
           openings={openings}
+          derivedOpenings={derivedProjectOpenings}
+          nesting={projectNesting}
           dossier={manufacturingDossier}
           activities={activities}
-          onGo={(target) => {
-            if (target === 'quote') {
-              goToTab('quotation');
-              return;
-            }
-            if (target === 'schedule') {
-              setDesignTool('list');
-              goToTab('designs');
-              return;
-            }
-            const tool: DesignTool | null =
-              target === 'studio'
-                ? 'studio'
-                : target === 'cad'
-                  ? 'cad'
-                  : target === 'nesting'
-                    ? 'nesting'
-                    : target === 'audit'
-                      ? 'audit'
-                      : null;
-            if (tool) {
-              setDesignTool(tool);
-              goToTab('designs');
-            }
-          }}
-          onOpenDocument={(doc, ref) => openStoredProject(doc, ref)}
-          onCreateProject={openNewProjectDialog}
-          onOpenProject={openProjectLibrary}
+          savedAt={projectRef?.savedAt ?? null}
+          onNavigate={navigateProject}
+          onOpenOpening={openProjectOpening}
           onExportPdf={exportCuttingPlanePdf}
         />
       ) : !hasProject ? (
