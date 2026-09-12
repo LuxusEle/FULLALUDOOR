@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import type { DerivedOpening, OpeningItem, ProjectMetadata } from '../lib/types';
 import { deriveDoor } from '../lib/door-model';
+import { customMemberCount, hasCustomOverrides } from '../lib/member-model';
 import { captureStudioCanvasNow, loadStudioSnapshot } from '../lib/studio-snapshot';
 import {
   DXF_70S_1001_1,
@@ -173,6 +174,11 @@ export default function FabricationAuditReport({
                 </option>
               ))}
             </select>
+            {hasCustomOverrides(activeOpening) && (
+              <span className="audit-custom-badge" title="Custom member overrides require independent fabrication review">
+                CUSTOM OVERRIDE · {customMemberCount(activeOpening)} MEMBER(S) · REVIEW REQUIRED
+              </span>
+            )}
           </div>
         </div>
 
@@ -1108,6 +1114,11 @@ export default function FabricationAuditReport({
                             <span className="bar-index-tag">#{idx + 1} • {bar.id}</span>
                             <h4 className="bar-name">{bar.description}</h4>
                             <span className="bar-profile-die">DIE CODE: <code>{bar.profile}</code></span>
+                            {bar.custom && (
+                              <span className="bar-custom-tag" title="Member overridden from catalogue standard">
+                                CUSTOM OVERRIDE — NOT CATALOGUE STANDARD
+                              </span>
+                            )}
                           </div>
 
                           {/* 3D Axonometric SVG Drawing with STRICT aspect ratio */}

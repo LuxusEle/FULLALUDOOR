@@ -1,6 +1,20 @@
 import { z } from 'zod';
-import type { CutItem, DerivedOpening, OpeningItem, TypologyId } from './types';
+import type { CutItem, DerivedOpening, MemberOverride, OpeningItem, TypologyId } from './types';
 import { TYPOLOGY_IDS } from './types';
+import { memberSpecsFor, type MemberSpec } from './member-map';
+
+export const memberOverrideSchema = z.object({
+  memberId: z.string(),
+  mode: z.enum(['standard', 'custom']),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  depth: z.number().optional(),
+  length: z.number().optional(),
+  wallThickness: z.number().optional(),
+  offsetX: z.number().optional(),
+  offsetY: z.number().optional(),
+  rotation: z.number().optional(),
+});
 
 export const doorConfigSchema = z.object({
   width: z.number().min(700).max(1400),
@@ -21,6 +35,8 @@ export const doorConfigSchema = z.object({
   weatherStrip: z.boolean().default(true),
   // Exploded view factor 0–100
   explodeFactor: z.number().min(0).max(100).default(0),
+  // Per-member custom overrides (canonical CAD edits)
+  memberOverrides: z.record(z.string(), memberOverrideSchema).optional(),
 });
 
 export type DoorConfig = z.infer<typeof doorConfigSchema>;
@@ -81,6 +97,86 @@ export const PROFILE_WEIGHTS: Record<string, { name: string; kgM: number; depth:
   'ALU-07':     { name: 'Casement Vent Sash', kgM: 0.74, depth: 38.0, face: 48.0 },
 };
 
+function customOverride(
+  overrides: Record<string, MemberOverride> | undefined,
+  memberId: string
+): MemberOverride | undefined {
+  const override = overrides?.[memberId];
+  return override && override.mode === 'custom' ? override : undefined;
+}
+
+function applyCutOverride(cut: CutItem, override: MemberOverride, spec: MemberSpec): CutItem {
+  const length =
+    typeof override.length === 'number' && Number.isFinite(override.length) ? override.length : cut.length;
+  const weight = PROFILE_WEIGHTS[cut.profile] || { kgM: 1.0 };
+  return {
+    ...cut,
+    length: Number(length.toFixed(1)),
+    totalWeightKg: Number(((length / 1000) * weight.kgM * cut.qty).toFixed(2)),
+    memberId: spec.memberId,
+    custom: true,
+  };
+}
+
+/**
+ * Applies member-level overrides to the standard cut list. Only the targeted
+ * member changes; multi-quantity cuts are split into per-instance pieces so a
+ * Left Jamb override never touches the Right Jamb.
+ */
+export function applyMemberOverrides(
+  system: TypologyId,
+  cutList: CutItem[],
+  overrides: Record<string, MemberOverride> | undefined
+): CutItem[] {
+  if (!overrides || Object.keys(overrides).length === 0) return cutList;
+  const specs = memberSpecsFor(system);
+  if (!specs.length) return cutList;
+  const byCut = new Map<string, MemberSpec[]>();
+  for (const spec of specs) {
+    const list = byCut.get(spec.cutId) ?? [];
+    list.push(spec);
+    byCut.set(spec.cutId, list);
+  }
+
+  const out: CutItem[] = [];
+  for (const cut of cutList) {
+    const specsForCut = byCut.get(cut.id);
+    if (!specsForCut || specsForCut.length === 0) {
+      out.push(cut);
+      continue;
+    }
+
+    const groupSpec = specsForCut.find((spec) => spec.scope === 'group');
+    const groupOverride = groupSpec ? customOverride(overrides, groupSpec.memberId) : undefined;
+    if (groupSpec && groupOverride) {
+      out.push(applyCutOverride(cut, groupOverride, groupSpec));
+      continue;
+    }
+
+    const instanceSpecs = specsForCut.filter((spec) => spec.scope === 'instance');
+    const anyInstanceOverride = instanceSpecs.some((spec) => customOverride(overrides, spec.memberId));
+    if (!anyInstanceOverride) {
+      out.push(cut);
+      continue;
+    }
+
+    if (cut.qty <= 1) {
+      const spec = instanceSpecs[0];
+      const override = spec ? customOverride(overrides, spec.memberId) : undefined;
+      out.push(spec && override ? applyCutOverride(cut, override, spec) : cut);
+      continue;
+    }
+
+    for (let index = 1; index <= cut.qty; index += 1) {
+      const spec = instanceSpecs.find((candidate) => candidate.instance === index);
+      const override = spec ? customOverride(overrides, spec.memberId) : undefined;
+      const instance: CutItem = { ...cut, id: `${cut.id}:${index}`, qty: 1 };
+      out.push(spec && override ? applyCutOverride(instance, override, spec) : instance);
+    }
+  }
+  return out;
+}
+
 export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
   frameFace: number;
   leafLeft: number;
@@ -133,8 +229,22 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
 
   const hingeStileFace = 66;
   const lockStileFace = 70;
-  const leftStileFace = hingeSide === 'left' ? hingeStileFace : lockStileFace;
-  const rightStileFace = hingeSide === 'left' ? lockStileFace : hingeStileFace;
+  const memberOverrides = (input as OpeningItem).memberOverrides;
+  const widthOverride = (memberId: string) => {
+    const override = customOverride(memberOverrides, memberId);
+    return override && typeof override.width === 'number' ? override.width : undefined;
+  };
+  let leftStileFace = hingeSide === 'left' ? hingeStileFace : lockStileFace;
+  let rightStileFace = hingeSide === 'left' ? lockStileFace : hingeStileFace;
+  const hingeWidth = widthOverride('hinge-stile');
+  const lockWidth = widthOverride('lock-stile');
+  if (hingeSide === 'left') {
+    if (hingeWidth !== undefined) leftStileFace = hingeWidth;
+    if (lockWidth !== undefined) rightStileFace = lockWidth;
+  } else {
+    if (hingeWidth !== undefined) rightStileFace = hingeWidth;
+    if (lockWidth !== undefined) leftStileFace = lockWidth;
+  }
   const stileFace = Math.max(leftStileFace, rightStileFace);
   const railLeft = leafLeft + leftStileFace;
   const railRight = leafRight - rightStileFace;
@@ -217,7 +327,7 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
   } else if (system === '100D-double') {
     const meetingClearance = 6;
     const eachLeafW = (width - 2 * frameFace - 2 * clearance - meetingClearance) / 2;
-    const eachRailLen = eachLeafW - hingeStileFace - lockStileFace - jointGap * 2;
+    const eachRailLen = eachLeafW - leftStileFace - rightStileFace - jointGap * 2;
 
     cutList = [
       makeCut('F-J', '100D-3105', 'Outer frame jamb', 2, height, 'Top 45° / bottom square', 45, 90, 'Outer Frame'),
@@ -429,6 +539,8 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
     );
   }
 
+  cutList = applyMemberOverrides(system, cutList, memberOverrides);
+
   const totalAluWeightKg = Number(
     cutList.reduce((acc, cut) => acc + cut.totalWeightKg, 0).toFixed(2)
   );
@@ -445,6 +557,7 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
     glass: (input as OpeningItem).glass || '6mm-clear',
     location: (input as OpeningItem).location || 'Ground Floor',
     hingeSide,
+    memberOverrides,
   };
 
   return {
@@ -488,13 +601,30 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
 
 export function fabricationChecks(config: DoorConfig | OpeningItem) {
   const d = deriveDoor(config);
-  return [
+  const checks = [
     { label: 'Frame corner joints', detail: 'True 45° miters or mechanical butt joints', value: 'NO OVERLAP' },
     { label: 'Rail / stile joints', detail: `Square body, ${d.jointGap.toFixed(1)} mm assembly clearance`, value: 'NO PASS-THROUGH' },
     { label: 'Shaped joint insert', detail: 'Angle tenon + threaded tie enters hollow chamber', value: 'CATALOG DETAIL' },
     { label: 'Glass engagement', detail: `${d.glassBite} mm glass bite depth with EPDM seating`, value: `${d.glassBite} MM` },
     { label: 'Hinge / roller datum', detail: 'Coaxial hardware alignment along travel axis', value: 'ALIGNED' },
   ];
+  const overrides = (config as OpeningItem).memberOverrides;
+  const customCount = overrides
+    ? Object.values(overrides).filter((override) => override.mode === 'custom').length
+    : 0;
+  if (customCount > 0) {
+    checks.push({
+      label: 'Custom profile override',
+      detail: `${customCount} member${customCount === 1 ? '' : 's'} overridden from catalogue standard`,
+      value: 'REVIEW REQUIRED',
+    });
+    checks.push({
+      label: 'Custom dimension verification',
+      detail: 'Custom geometry is not automatically fabrication approved',
+      value: 'NOT VERIFIED',
+    });
+  }
+  return checks;
 }
 
 export function jointClearanceReport(config: DoorConfig) {

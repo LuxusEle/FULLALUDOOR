@@ -213,6 +213,7 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
         const root = new B.TransformNode('door-assembly', scene);
         currentRoot = root;
         const d = deriveDoor(cfg);
+        const cutLength = (memberId: string) => d.cutList.find((cut) => cut.memberId === memberId)?.length;
         const explode = v === 'exploded' ? 145 : v === 'section' ? 55 : 0;
 
         const finishColors = {
@@ -526,16 +527,19 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
           buildSash('100S-sash-front', jambFace, 1, 'SD-1301');
           buildSash('100S-sash-rear', cfg.width - jambFace - leafW, 2, 'SD-1302');
         } else {
-          const frameLeft = exactProfile('frame-left-100D-3105', '100D-3105', cfg.height, 'vertical', { x: 0, y: 0, z: 0 }, root, false, 'left-jamb');
-          if (!frameLeft) box('frame-left-fallback', d.frameFace, cfg.height, 100, d.frameFace / 2 - frameSpread, cfg.height / 2, 0, aluminium);
+          const jambLeftLen = cutLength('left-jamb') ?? cfg.height;
+          const jambRightLen = cutLength('right-jamb') ?? cfg.height;
+          const headLen = cutLength('head') ?? cfg.width;
+          const frameLeft = exactProfile('frame-left-100D-3105', '100D-3105', jambLeftLen, 'vertical', { x: 0, y: 0, z: 0 }, root, false, 'left-jamb');
+          if (!frameLeft) box('frame-left-fallback', d.frameFace, jambLeftLen, 100, d.frameFace / 2 - frameSpread, cfg.height / 2, 0, aluminium);
           else if (frameSpread) frameLeft.position.x = -frameSpread;
 
-          const frameRight = exactProfile('frame-right-100D-3105', '100D-3105', cfg.height, 'vertical', { x: cfg.width - d.frameFace, y: 0, z: 0 }, root, true, 'right-jamb');
-          if (!frameRight) box('frame-right-fallback', d.frameFace, cfg.height, 100, cfg.width - d.frameFace / 2 + frameSpread, cfg.height / 2, 0, aluminium);
+          const frameRight = exactProfile('frame-right-100D-3105', '100D-3105', jambRightLen, 'vertical', { x: cfg.width - d.frameFace, y: 0, z: 0 }, root, true, 'right-jamb');
+          if (!frameRight) box('frame-right-fallback', d.frameFace, jambRightLen, 100, cfg.width - d.frameFace / 2 + frameSpread, cfg.height / 2, 0, aluminium);
           else if (frameSpread) frameRight.position.x = frameSpread;
 
-          const frameHead = exactProfile('frame-head-100D-3105', '100D-3105', cfg.width, 'frame-horizontal', { x: 0, y: cfg.height - d.frameFace, z: 0 }, root, false, 'head');
-          if (!frameHead) box('frame-head-fallback', cfg.width, d.frameFace, 100, cfg.width / 2, cfg.height - d.frameFace / 2 + frameSpread, 0, aluminium);
+          const frameHead = exactProfile('frame-head-100D-3105', '100D-3105', headLen, 'frame-horizontal', { x: 0, y: cfg.height - d.frameFace, z: 0 }, root, false, 'head');
+          if (!frameHead) box('frame-head-fallback', headLen, d.frameFace, 100, headLen / 2, cfg.height - d.frameFace / 2 + frameSpread, 0, aluminium);
           else if (frameSpread) frameHead.position.y = frameSpread;
 
           const hingeLeft = cfg.hingeSide === 'left';
@@ -555,21 +559,26 @@ export default function DoorViewer({ config, view, setView, theme = 'dark' }: Do
           const railLength = d.clearWidth - d.jointGap * 2;
           const leftStileId = hingeLeft ? '100D-101' : '100D-103';
           const rightStileId = hingeLeft ? '100D-103' : '100D-101';
+          const leftStileLen = cutLength(hingeLeft ? 'hinge-stile' : 'lock-stile') ?? stileLength;
+          const rightStileLen = cutLength(hingeLeft ? 'lock-stile' : 'hinge-stile') ?? stileLength;
+          const topRailLen = cutLength('top-rail') ?? railLength;
+          const midRailLen = cutLength('mid-rail') ?? railLength;
+          const bottomRailLen = cutLength('bottom-rail') ?? railLength;
 
-          const sLeft = exactProfile(`${hingeLeft ? 'hinge' : 'lock'}-stile-${leftStileId}`, leftStileId, stileLength, 'leaf-vertical', { x: d.leafLeft - hingeX - explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
-          if (!sLeft) memberBox('left-stile-fallback', d.leftStileFace, stileLength, 100, d.leafLeft + d.leftStileFace / 2 - explode, d.leafBottom + stileLength / 2, 0, aluminium);
+          const sLeft = exactProfile(`${hingeLeft ? 'hinge' : 'lock'}-stile-${leftStileId}`, leftStileId, leftStileLen, 'leaf-vertical', { x: d.leafLeft - hingeX - explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
+          if (!sLeft) memberBox('left-stile-fallback', d.leftStileFace, leftStileLen, 100, d.leafLeft + d.leftStileFace / 2 - explode, d.leafBottom + leftStileLen / 2, 0, aluminium);
 
-          const sRight = exactProfile(`${hingeLeft ? 'lock' : 'hinge'}-stile-${rightStileId}`, rightStileId, stileLength, 'leaf-vertical', { x: d.leafRight - d.rightStileFace - hingeX + explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
-          if (!sRight) memberBox('right-stile-fallback', d.rightStileFace, stileLength, 100, d.leafRight - d.rightStileFace / 2 + explode, d.leafBottom + stileLength / 2, 0, aluminium);
+          const sRight = exactProfile(`${hingeLeft ? 'lock' : 'hinge'}-stile-${rightStileId}`, rightStileId, rightStileLen, 'leaf-vertical', { x: d.leafRight - d.rightStileFace - hingeX + explode, y: d.leafBottom, z: 0 }, leafRoot, hingeLeft);
+          if (!sRight) memberBox('right-stile-fallback', d.rightStileFace, rightStileLen, 100, d.leafRight - d.rightStileFace / 2 + explode, d.leafBottom + rightStileLen / 2, 0, aluminium);
 
-          const rTop = exactProfile('top-rail-100D-201', '100D-201', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafTop - d.topRail, z: explode }, leafRoot);
-          if (!rTop) memberBox('top-rail-fallback', railLength, d.topRail, 100, (d.railLeft + d.railRight) / 2, d.leafTop - d.topRail / 2, explode, aluminium);
+          const rTop = exactProfile('top-rail-100D-201', '100D-201', topRailLen, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafTop - d.topRail, z: explode }, leafRoot);
+          if (!rTop) memberBox('top-rail-fallback', topRailLen, d.topRail, 100, (d.railLeft + d.railRight) / 2, d.leafTop - d.topRail / 2, explode, aluminium);
 
-          const rMid = exactProfile('mid-rail-100D-301', '100D-301', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.midCenter - d.midRail / 2, z: explode }, leafRoot);
-          if (!rMid) memberBox('mid-rail-fallback', railLength, d.midRail, 100, (d.railLeft + d.railRight) / 2, d.midCenter, explode, aluminium);
+          const rMid = exactProfile('mid-rail-100D-301', '100D-301', midRailLen, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.midCenter - d.midRail / 2, z: explode }, leafRoot);
+          if (!rMid) memberBox('mid-rail-fallback', midRailLen, d.midRail, 100, (d.railLeft + d.railRight) / 2, d.midCenter, explode, aluminium);
 
-          const rBot = exactProfile('bottom-rail-100D-401', '100D-401', railLength, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafBottom, z: explode }, leafRoot, false, 'none', true);
-          if (!rBot) memberBox('bottom-rail-fallback', railLength, d.bottomRail, 100, (d.railLeft + d.railRight) / 2, d.leafBottom + d.bottomRail / 2, explode, aluminium);
+          const rBot = exactProfile('bottom-rail-100D-401', '100D-401', bottomRailLen, 'rail-horizontal', { x: d.railLeft + d.jointGap - hingeX, y: d.leafBottom, z: explode }, leafRoot, false, 'none', true);
+          if (!rBot) memberBox('bottom-rail-fallback', bottomRailLen, d.bottomRail, 100, (d.railLeft + d.railRight) / 2, d.leafBottom + d.bottomRail / 2, explode, aluminium);
 
           if (cfg.showGlass) {
             const glassW = d.glassX1 - d.glassX0;

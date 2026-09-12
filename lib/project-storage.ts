@@ -1,6 +1,7 @@
 ﻿import { z } from 'zod';
 import type { OpeningItem, ProjectMetadata } from './types';
 import { TYPOLOGY_IDS } from './types';
+import { memberOverrideSchema } from './door-model';
 import { requireSupabase } from './supabase';
 import type { SupabaseUser } from './supabase';
 import { protectedRpcCredential } from './device-api';
@@ -61,6 +62,7 @@ const openingItemSchema = z.object({
   notes: z.string().optional(),
   hingeSide: z.enum(['left', 'right']).optional(),
   openingAngle: z.number().optional(),
+  memberOverrides: z.record(z.string(), memberOverrideSchema).optional(),
 });
 
 const storedProjectSchema = z.object({

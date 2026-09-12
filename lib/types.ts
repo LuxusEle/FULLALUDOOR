@@ -39,6 +39,37 @@ export type GlassType =
   | '12mm-toughened'
   | '24mm-dgu';
 
+export type MemberMode = 'standard' | 'custom';
+
+/**
+ * A per-member custom override. It is scoped to exactly one opening member
+ * (project → opening → member). It never changes the catalogue profile and it
+ * never leaks to any other member or opening.
+ */
+export interface MemberOverride {
+  memberId: string;
+  mode: MemberMode;
+  width?: number;
+  height?: number;
+  depth?: number;
+  length?: number;
+  wallThickness?: number;
+  offsetX?: number;
+  offsetY?: number;
+  rotation?: number;
+}
+
+/** The editable numeric fields of a member override. */
+export type MemberEditableField =
+  | 'width'
+  | 'height'
+  | 'depth'
+  | 'length'
+  | 'wallThickness'
+  | 'offsetX'
+  | 'offsetY'
+  | 'rotation';
+
 export interface OpeningItem {
   id: string;
   tag: string; // e.g. D-01, W-01
@@ -53,6 +84,11 @@ export interface OpeningItem {
   notes?: string;
   hingeSide?: 'left' | 'right';
   openingAngle?: number;
+  /**
+   * Member-level custom overrides keyed by stable member id. This is the
+   * canonical record of a CAD member edit and feeds every derived engine.
+   */
+  memberOverrides?: Record<string, MemberOverride>;
 }
 
 export interface ProjectPricing {
@@ -120,6 +156,10 @@ export interface CutItem {
   group: 'Outer Frame' | 'Sash / Leaf' | 'Glazing Bead' | 'Transom / Mullion' | 'Hardware';
   unitWeightKgM: number;
   totalWeightKg: number;
+  /** Stable canonical member id this cut belongs to (set when known/overridden). */
+  memberId?: string;
+  /** True when the cut length/dimensions were overridden from catalogue standard. */
+  custom?: boolean;
 }
 
 export interface DerivedOpening {

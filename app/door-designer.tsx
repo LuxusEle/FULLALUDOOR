@@ -278,6 +278,7 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
       quantity: opening.quantity,
       glass: opening.glass,
       location: opening.location,
+      memberOverrides: opening.memberOverrides,
     });
     setDimensionDraft({ width: String(opening.width), height: String(opening.height) });
   }, []);
@@ -290,6 +291,18 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
       focusConfig(target);
     },
     [openings, focusConfig]
+  );
+
+  // Canonical member-edit entry point: the 2D CAD editor updates the opening's
+  // memberOverrides and every derived engine recalculates from this one source.
+  const handleUpdateOpening = useCallback(
+    (next: OpeningItem) => {
+      setOpenings((prev) => prev.map((o) => (o.id === next.id ? next : o)));
+      if (next.id === activeOpeningId) {
+        setConfig((prev) => ({ ...prev, memberOverrides: next.memberOverrides }));
+      }
+    },
+    [activeOpeningId]
   );
 
   // Navigation targets used by the project-scoped dashboard. Each maps onto the
@@ -1331,6 +1344,7 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
               project={project}
               openings={openings}
               onSelectOpening={handleSelectOpening}
+              onUpdateOpening={handleUpdateOpening}
             />
           )}
 

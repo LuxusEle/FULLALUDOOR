@@ -17,7 +17,12 @@ import {
   Settings2,
   Tag,
 } from 'lucide-react';
-import type { OpeningItem, ProjectMetadata } from '../lib/types';
+import type { MemberOverride, OpeningItem, ProjectMetadata } from '../lib/types';
+import {
+  customMemberCount,
+  deriveMemberDefinitions,
+  hasCustomOverrides,
+} from '../lib/member-model';
 import {
   LINE_STYLES,
   buildShopDrawing,
@@ -25,11 +30,13 @@ import {
   type DrawingLayer,
   type DrawingPrimitive,
   type DrawingStatus,
+  type ElevationMemberBox,
   type ScaleMode,
   type SheetOrientation,
   type SheetSize,
   type ShopDrawing,
 } from '../lib/shop-drawing';
+import MemberDetailWorkspace from './member-detail-workspace';
 
 interface VectorCadDrawingsProps {
   opening: OpeningItem;
@@ -37,6 +44,7 @@ interface VectorCadDrawingsProps {
   project?: ProjectMetadata | null;
   openings?: OpeningItem[];
   onSelectOpening?: (id: string) => void;
+  onUpdateOpening?: (opening: OpeningItem) => void;
   revision?: string;
   status?: DrawingStatus;
 }
@@ -204,10 +212,11 @@ export default function VectorCadDrawings({
   project = null,
   openings = [],
   onSelectOpening,
+  onUpdateOpening,
   revision,
   status,
 }: VectorCadDrawingsProps) {
-  const [view, setView] = useState<CadView>('sheet');
+  const [view, setView] = useState<CadView>('elevation');
   const [sheetSize, setSheetSize] = useState<SheetSize>('A3');
   const [orientation, setOrientation] = useState<SheetOrientation>('landscape');
   const [scaleMode, setScaleMode] = useState<ScaleMode>('auto');
@@ -216,6 +225,13 @@ export default function VectorCadDrawings({
   const [center, setCenter] = useState<{ x: number; y: number } | null>(null);
   const [panMode, setPanMode] = useState(true);
   const [snap, setSnap] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [recalcState, setRecalcState] = useState<'idle' | 'recalculating' | 'uptodate' | 'review'>('idle');
+  const historyRef = useRef<Array<Record<string, MemberOverride>>>([]);
+  const futureRef = useRef<Array<Record<string, MemberOverride>>>([]);
+  const [historyDepth, setHistoryDepth] = useState(0);
+  const [futureDepth, setFutureDepth] = useState(0);
   const [visibility, setVisibility] = useState({
     dimensions: true,
     profileLabels: true,
@@ -244,6 +260,98 @@ export default function VectorCadDrawings({
 
   const effectiveStatus = status ?? drawing.status;
   const effectiveRevision = revision ?? drawing.revision;
+
+  const memberDefinitions = useMemo(() => deriveMemberDefinitions(opening), [opening]);
+  const selectedDefinition = useMemo(
+    () => memberDefinitions.find((definition) => definition.memberId === selectedMemberId) ?? null,
+    [memberDefinitions, selectedMemberId]
+  );
+  const selectableMembers: ElevationMemberBox[] = useMemo(
+    () => drawing.elevation.selectableMembers ?? [],
+    [drawing]
+  );
+
+  // A member selected on one opening must not survive an opening switch.
+  useEffect(() => {
+    if (selectedMemberId && !memberDefinitions.some((definition) => definition.memberId === selectedMemberId)) {
+      setSelectedMemberId(null);
+      setDetailOpen(false);
+    }
+  }, [memberDefinitions, selectedMemberId]);
+
+  const finishRecalc = useCallback((overrides: Record<string, MemberOverride> | undefined) => {
+    setRecalcState(hasCustomOverrides({ ...opening, memberOverrides: overrides }) ? 'review' : 'uptodate');
+  }, [opening]);
+
+  const commitOverrides = useCallback(
+    (next: Record<string, MemberOverride>) => {
+      if (!onUpdateOpening) return;
+      historyRef.current = [...historyRef.current, opening.memberOverrides ?? {}];
+      futureRef.current = [];
+      setHistoryDepth(historyRef.current.length);
+      setFutureDepth(0);
+      const clean = Object.keys(next).length ? next : undefined;
+      onUpdateOpening({ ...opening, memberOverrides: clean });
+      setRecalcState('recalculating');
+      window.setTimeout(() => finishRecalc(clean), 60);
+    },
+    [onUpdateOpening, opening, finishRecalc]
+  );
+
+  const undo = useCallback(() => {
+    if (!onUpdateOpening || historyRef.current.length === 0) return;
+    const previous = historyRef.current[historyRef.current.length - 1];
+    historyRef.current = historyRef.current.slice(0, -1);
+    futureRef.current = [...futureRef.current, opening.memberOverrides ?? {}];
+    setHistoryDepth(historyRef.current.length);
+    setFutureDepth(futureRef.current.length);
+    const clean = Object.keys(previous).length ? previous : undefined;
+    onUpdateOpening({ ...opening, memberOverrides: clean });
+    setRecalcState('recalculating');
+    window.setTimeout(() => finishRecalc(clean), 60);
+  }, [onUpdateOpening, opening, finishRecalc]);
+
+  const redo = useCallback(() => {
+    if (!onUpdateOpening || futureRef.current.length === 0) return;
+    const next = futureRef.current[futureRef.current.length - 1];
+    futureRef.current = futureRef.current.slice(0, -1);
+    historyRef.current = [...historyRef.current, opening.memberOverrides ?? {}];
+    setHistoryDepth(historyRef.current.length);
+    setFutureDepth(futureRef.current.length);
+    const clean = Object.keys(next).length ? next : undefined;
+    onUpdateOpening({ ...opening, memberOverrides: clean });
+    setRecalcState('recalculating');
+    window.setTimeout(() => finishRecalc(clean), 60);
+  }, [onUpdateOpening, opening, finishRecalc]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (event.key.toLowerCase() === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if (event.key.toLowerCase() === 'y' || (event.key.toLowerCase() === 'z' && event.shiftKey)) {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [undo, redo]);
+
+  const selectMember = useCallback((memberId: string) => {
+    setSelectedMemberId(memberId);
+    setView((current) => (current === 'elevation' ? current : 'elevation'));
+  }, []);
+
+  const openMemberDetail = useCallback((memberId?: string) => {
+    if (memberId) setSelectedMemberId(memberId);
+    setDetailOpen(true);
+  }, []);
+
+  const closeMemberDetail = useCallback(() => setDetailOpen(false), []);
 
   const baseView = useMemo<ViewBox>(() => {
     const bounds = boundsFor(drawing, VIEW_LAYERS[view]);
@@ -434,6 +542,13 @@ export default function VectorCadDrawings({
           >
             <Settings2 size={15} />
           </button>
+          <button
+            className={`cad-action-btn ${detailOpen ? 'active' : ''}`}
+            title="Open the dedicated member detail workspace"
+            onClick={() => (detailOpen ? closeMemberDetail() : openMemberDetail(selectedMemberId ?? undefined))}
+          >
+            <Ruler size={14} /> MEMBER DETAIL
+          </button>
           {openings.length > 1 && (
             <button
               className="cad-action-btn"
@@ -522,6 +637,22 @@ export default function VectorCadDrawings({
         </div>
       )}
 
+      {detailOpen ? (
+        <MemberDetailWorkspace
+          opening={opening}
+          elevation={drawing.elevation}
+          members={memberDefinitions}
+          selectedMemberId={selectedMemberId}
+          onSelectMember={selectMember}
+          onClose={closeMemberDetail}
+          commitOverrides={commitOverrides}
+          undo={undo}
+          redo={redo}
+          canUndo={historyDepth > 0}
+          canRedo={futureDepth > 0}
+          recalcState={recalcState}
+        />
+      ) : (
       <div className="cad-body">
         <main className="cad-canvas">
           {view === 'schedule' ? (
@@ -549,12 +680,75 @@ export default function VectorCadDrawings({
                 {visiblePrimitives.map((primitive, index) => (
                   <CadPrimitive key={primitive.id ?? `${primitive.kind}-${index}`} primitive={primitive} />
                 ))}
+                {view === 'elevation' &&
+                  selectableMembers.map((member) => {
+                    const selected = member.id === selectedMemberId;
+                    return (
+                      <rect
+                        key={`hit-${member.id}`}
+                        x={member.x}
+                        y={member.y}
+                        width={member.width}
+                        height={member.height}
+                        className={`cad-member-hit${selected ? ' selected' : ''}${member.custom ? ' custom' : ''}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          selectMember(member.id);
+                        }}
+                      >
+                        <title>{`${member.label} — ${member.profile}${member.custom ? ' (CUSTOM)' : ''}`}</title>
+                      </rect>
+                    );
+                  })}
               </svg>
             </div>
           )}
         </main>
 
         <aside className="cad-info no-print">
+          <section className="cad-info-section cad-member-summary">
+            <h3>SELECTED MEMBER</h3>
+            {!selectedDefinition ? (
+              <p className="cad-empty">
+                Click a bar in the drawing to inspect it, or open the Member Detail workspace.
+              </p>
+            ) : (
+              <>
+                <div className="cad-member-head">
+                  <strong>{selectedDefinition.name}</strong>
+                  <span className={`cad-mode-badge ${selectedDefinition.mode}`}>
+                    {selectedDefinition.mode === 'custom' ? 'CUSTOM' : 'STANDARD'}
+                  </span>
+                </div>
+                <div className="cad-summary-grid">
+                  <span>PROFILE</span>
+                  <b className="mono">{selectedDefinition.profile}</b>
+                  <span>TYPE</span>
+                  <b className="mono">{selectedDefinition.type}</b>
+                  <span>LENGTH</span>
+                  <b className="mono">{Math.round(selectedDefinition.current.length * 10) / 10} mm</b>
+                </div>
+                <button
+                  type="button"
+                  className="cad-action-btn primary cad-open-detail"
+                  onClick={() => openMemberDetail(selectedDefinition.memberId)}
+                >
+                  <Ruler size={13} /> VIEW MEMBER DETAILS
+                </button>
+              </>
+            )}
+            {hasCustomOverrides(opening) && (
+              <div className="cad-member-count">{customMemberCount(opening)} custom member(s) on this opening</div>
+            )}
+            <div className={`cad-recalc ${recalcState}`}>
+              {recalcState === 'recalculating'
+                ? 'Recalculating fabrication data…'
+                : recalcState === 'review'
+                  ? 'Fabrication data requires review'
+                  : 'All fabrication data up to date'}
+            </div>
+          </section>
           <div className={`cad-status ${effectiveStatus === 'DRAFT' ? 'ok' : 'review'}`}>
             <span>STATUS</span>
             <strong>{effectiveStatus}</strong>
@@ -647,6 +841,7 @@ export default function VectorCadDrawings({
           </InfoSection>
         </aside>
       </div>
+      )}
     </div>
   );
 }

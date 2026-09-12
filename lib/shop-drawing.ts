@@ -8,6 +8,7 @@
 
 import type { CutItem, DerivedOpening, OpeningItem, ProjectMetadata, TypologyId } from './types';
 import { deriveDoor, PROFILE_WEIGHTS } from './door-model';
+import { memberSpecsFor } from './member-map';
 import { deriveOpeningIssues } from './project-catalog';
 import {
   DXF_100D_101,
@@ -178,6 +179,25 @@ export interface ElevationMember {
   label: string;
 }
 
+/**
+ * A selectable member hit-region in elevation model coordinates (mm). Used by
+ * the interactive 2D CAD to select an individual bar and by the dimension
+ * chains to annotate custom members. Purely derived from the live model — it
+ * never fabricates geometry.
+ */
+export interface ElevationMemberBox {
+  id: string;
+  axis: 'horizontal' | 'vertical';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  profile: string;
+  label: string;
+  standardLength: number;
+  custom: boolean;
+}
+
 export interface SwingInfo {
   hingeSide: 'left' | 'right';
   openingAngle: number;
@@ -200,6 +220,7 @@ export interface ElevationLayout {
   frame: ElevationFrame;
   panels: ElevationPanel[];
   members: ElevationMember[];
+  selectableMembers?: ElevationMemberBox[];
   swing?: SwingInfo;
   slide?: SlideInfo;
 }
@@ -228,6 +249,8 @@ export interface ProfileReference {
   cataloguePage: number | null;
   confidence: 'HIGH' | 'MEDIUM' | 'REQUIRES REVIEW';
   verifiedGeometry: boolean;
+  /** True when at least one instance of this profile is a custom override. */
+  custom?: boolean;
 }
 
 export interface GlassReference {
@@ -754,9 +777,123 @@ function buildSliding(opening: OpeningItem): ElevationLayout {
 }
 
 export function buildElevationLayout(opening: OpeningItem): ElevationLayout {
-  if (opening.system === '100D-single') return buildSwingSingle(opening);
-  if (opening.system === '100D-double') return buildSwingDouble(opening);
-  return buildSliding(opening);
+  const layout =
+    opening.system === '100D-single'
+      ? buildSwingSingle(opening)
+      : opening.system === '100D-double'
+        ? buildSwingDouble(opening)
+        : buildSliding(opening);
+  return { ...layout, selectableMembers: deriveSelectableMembers(opening, layout) };
+}
+
+function memberLengthOverride(opening: OpeningItem, memberId: string): number | undefined {
+  const override = opening.memberOverrides?.[memberId];
+  return override && override.mode === 'custom' && typeof override.length === 'number'
+    ? override.length
+    : undefined;
+}
+
+function memberBox(
+  opening: OpeningItem,
+  spec: { memberId: string; name: string; axis: 'horizontal' | 'vertical' },
+  profile: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  standardLength: number
+): ElevationMemberBox {
+  const override = memberLengthOverride(opening, spec.memberId);
+  const resolvedWidth = spec.axis === 'horizontal' && override !== undefined ? override : width;
+  const resolvedHeight = spec.axis === 'vertical' && override !== undefined ? override : height;
+  return {
+    id: spec.memberId,
+    axis: spec.axis,
+    x: round1(x),
+    y: round1(y),
+    width: round1(resolvedWidth),
+    height: round1(resolvedHeight),
+    profile,
+    label: spec.name,
+    standardLength: round1(standardLength),
+    custom: override !== undefined,
+  };
+}
+
+/**
+ * Builds the selectable member hit-regions from the live elevation. Frame
+ * jambs / head / sill come from the frame envelope; stiles, rails and tracks
+ * come from the existing elevation members. Members with no verified elevation
+ * box stay selectable from the member list (never fabricated here).
+ */
+export function deriveSelectableMembers(
+  opening: OpeningItem,
+  elevation: ElevationLayout
+): ElevationMemberBox[] {
+  const specs = memberSpecsFor(opening.system);
+  if (!specs.length) return [];
+  const standardOpening = opening.memberOverrides
+    ? { ...opening, memberOverrides: undefined }
+    : opening;
+  const derived = deriveDoor(standardOpening);
+  const cutById = new Map(derived.cutList.map((cut) => [cut.id, cut]));
+  const frame = elevation.frame;
+  const W = elevation.width;
+  const H = elevation.height;
+  const panels = elevation.panels;
+  const boxes: ElevationMemberBox[] = [];
+
+  for (const spec of specs) {
+    const base = spec.memberId.replace(/-\d+$/, '');
+    const profile = cutById.get(spec.cutId)?.profile ?? '';
+    if (base === 'left-jamb') {
+      boxes.push(memberBox(opening, spec, profile, frame.x, frame.y, frame.face, H, H));
+    } else if (base === 'right-jamb') {
+      boxes.push(memberBox(opening, spec, profile, round1(W - frame.face), frame.y, frame.face, H, H));
+    } else if (base === 'head') {
+      boxes.push(memberBox(opening, spec, profile, 0, 0, W, frame.face, W));
+    } else if (base === 'sill') {
+      boxes.push(memberBox(opening, spec, profile, 0, round1(H - frame.face), W, frame.face, W));
+    } else {
+      const member = elevation.members.find((item) => item.id === base || item.id === spec.memberId);
+      if (member) {
+        const panel = panels[Math.min((spec.instance ?? 1) - 1, panels.length - 1)] ?? panels[0];
+        if (!panel) continue;
+        if (member.axis === 'horizontal') {
+          boxes.push(
+            memberBox(opening, spec, member.profile || profile, panel.x, member.position, panel.width, member.thickness, panel.width)
+          );
+        } else {
+          boxes.push(
+            memberBox(opening, spec, member.profile || profile, member.position, panel.y, member.thickness, panel.height, panel.height)
+          );
+        }
+        continue;
+      }
+      // Glazing beads and other peripheral members have no elevation member.
+      // Derive their region from the real glass geometry (upper/top beads track
+      // the top glass, lower/bottom beads the bottom glass, others the union).
+      const glasses = panels.flatMap((panel) => panel.glass);
+      if (!glasses.length) continue;
+      const sorted = [...glasses].sort((a, b) => a.y - b.y);
+      let target = sorted;
+      if (sorted.length > 1 && /upper|top|head/i.test(spec.memberId)) {
+        target = [sorted[0]];
+      } else if (sorted.length > 1 && /lower|bottom|sill/i.test(spec.memberId)) {
+        target = [sorted[sorted.length - 1]];
+      }
+      const minX = Math.min(...target.map((glass) => glass.x));
+      const minY = Math.min(...target.map((glass) => glass.y));
+      const maxX = Math.max(...target.map((glass) => glass.x + glass.width));
+      const maxY = Math.max(...target.map((glass) => glass.y + glass.height));
+      const width = maxX - minX;
+      const height = maxY - minY;
+      boxes.push(
+        memberBox(opening, spec, profile, minX, minY, width, height, spec.axis === 'horizontal' ? width : height)
+      );
+    }
+  }
+  return boxes;
 }
 
 // ---------------------------------------------------------------------------
@@ -906,6 +1043,29 @@ function buildDimensionChains(elevation: ElevationLayout): DimensionChain[] {
     );
   }
 
+  // Custom member overrides always contribute a live dimension segment so the
+  // chain can never display a stale catalogue value for an edited member.
+  for (const member of elevation.selectableMembers ?? []) {
+    if (!member.custom) continue;
+    if (member.axis === 'horizontal') {
+      moduleSegments.push({
+        id: `h-custom-${member.id}`,
+        start: round1(member.x),
+        end: round1(member.x + member.width),
+        label: `${round1(member.width)}`,
+        kind: 'component',
+      });
+    } else {
+      verticalModules.push({
+        id: `v-custom-${member.id}`,
+        start: round1(member.y),
+        end: round1(member.y + member.height),
+        label: `${round1(member.height)}`,
+        kind: 'component',
+      });
+    }
+  }
+
   horizontal.push({ id: 'h-module', axis: 'horizontal', level: 1, segments: moduleSegments });
   if (glassSegments.length) horizontal.push({ id: 'h-glass', axis: 'horizontal', level: 2, segments: glassSegments });
 
@@ -932,6 +1092,7 @@ function buildProfileReferences(d: DerivedOpening): ProfileReference[] {
     const spec = PROFILE_WEIGHTS[cut.profile];
     if (existing) {
       existing.quantity += cut.qty;
+      existing.custom = existing.custom || cut.custom === true;
       continue;
     }
     grouped.set(cut.profile, {
@@ -945,6 +1106,7 @@ function buildProfileReferences(d: DerivedOpening): ProfileReference[] {
       cataloguePage: manifest?.page ?? null,
       confidence: manifest?.confidence ?? 'REQUIRES REVIEW',
       verifiedGeometry: Boolean(visual),
+      custom: cut.custom === true,
     });
   }
   return [...grouped.values()];
@@ -967,6 +1129,12 @@ function buildNotes(opening: OpeningItem, d: DerivedOpening, profiles: ProfileRe
   const unverified = profiles.filter((profile) => profile.confidence === 'REQUIRES REVIEW');
   if (unverified.length) {
     notes.push(`CATALOGUE REVIEW REQUIRED FOR: ${unverified.map((profile) => profile.code).join(', ')}.`);
+  }
+  const customProfiles = profiles.filter((profile) => profile.custom);
+  if (customProfiles.length) {
+    notes.push(
+      `CUSTOM MEMBER OVERRIDE — NOT CATALOGUE STANDARD: ${customProfiles.map((profile) => profile.code).join(', ')}. VERIFY BEFORE FABRICATION.`
+    );
   }
   if (!opening.location || !opening.location.trim()) {
     notes.push('INSTALLATION LOCATION NOT SET — REQUIRES REVIEW.');
@@ -1277,6 +1445,32 @@ function emitElevation(elevation: ElevationLayout, t: Transformer, options: Requ
         });
       }
     }
+  }
+
+  for (const member of elevation.selectableMembers ?? []) {
+    if (!member.custom) continue;
+    primitives.push({
+      kind: 'rect',
+      layer: 'section',
+      x: tx(t, member.x),
+      y: ty(t, member.y),
+      width: round2(member.width * t.s),
+      height: round2(member.height * t.s),
+      style: 'section',
+    });
+    primitives.push({
+      kind: 'text',
+      layer: 'section',
+      x: tx(t, member.x + member.width / 2),
+      y: ty(t, member.y + member.height / 2),
+      text: `${member.profile} CUSTOM`,
+      size: 1.9,
+      style: 'section',
+      anchor: 'middle',
+      baseline: 'middle',
+      family: 'mono',
+      weight: 700,
+    });
   }
 
   if (elevation.swing && options.annotations) {
@@ -1803,10 +1997,21 @@ export function buildShopDrawing(input: ShopDrawingInput): ShopDrawing {
   const bottomReserve = visibility.dimensions ? horizontalChains.length * spacing + 8 : 6;
   const availableWidth = sheet.draw.width - leftReserve - 8;
   const availableHeight = sheet.draw.height - 8 - bottomReserve;
-  const chosen = chooseScale(scale, elevation.width, elevation.height, availableWidth, availableHeight);
+  // Custom members may extend past the nominal opening envelope; include them in
+  // the fitted extents so a custom length is never clipped off the sheet.
+  const customExtent = (elevation.selectableMembers ?? []).reduce(
+    (extent, member) => ({
+      width: Math.max(extent.width, member.x + member.width),
+      height: Math.max(extent.height, member.y + member.height),
+    }),
+    { width: 0, height: 0 }
+  );
+  const geometryWidth = Math.max(elevation.width, customExtent.width);
+  const geometryHeight = Math.max(elevation.height, customExtent.height);
+  const chosen = chooseScale(scale, geometryWidth, geometryHeight, availableWidth, availableHeight);
   const drawScale = 1 / chosen.denominator;
-  const originX = round2(sheet.draw.x + leftReserve + Math.max(0, (availableWidth - elevation.width * drawScale) / 2));
-  const originY = round2(sheet.draw.y + 8 + Math.max(0, (availableHeight - elevation.height * drawScale) / 2));
+  const originX = round2(sheet.draw.x + leftReserve + Math.max(0, (availableWidth - geometryWidth * drawScale) / 2));
+  const originY = round2(sheet.draw.y + 8 + Math.max(0, (availableHeight - geometryHeight * drawScale) / 2));
   const transformer = makeTransformer(chosen.denominator, originX, originY);
 
   const drawingNumber =

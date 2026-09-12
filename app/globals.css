@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /* ===========================================================================
-   FullAluDoor palette — BLACK + CRIMSON + WHITE (industrial fabrication).
+   FullAluDoor palette â€” BLACK + CRIMSON + WHITE (industrial fabrication).
    Dark is the default identity. Light is an explicit, optional opt-in.
    =========================================================================== */
 :root,
@@ -478,7 +478,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; }
 .check small { color: var(--muted); font-size: 10px; }
 .pass { color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; }
 .make-status.error { color: var(--danger); font-weight: 600; }
-.make-status.error::before { content: 'âš  '; }
+.make-status.error::before { content: 'Ã¢Å¡Â  '; }
 
 /* Multi-Opening Schedule Table */
 .schedule-wrapper { max-width: 1400px; margin: 20px auto; padding: 0 20px; width: 100%; }
@@ -1509,7 +1509,7 @@ input[type=range] { accent-color: var(--accent); width: 100%; }
 }
 
 /* ============================================================
-   NESTING â€” WASTE OPTIMIZATION UI
+   NESTING Ã¢â‚¬â€ WASTE OPTIMIZATION UI
    ============================================================ */
 .opt-toggle-strip {
   display: flex;
@@ -2166,7 +2166,7 @@ h1, h2, h3, h4, p, span, a, button { overflow-wrap: break-word; word-break: norm
 }
 
 /* ===========================================================================
-   FullAluDoor Dashboard — professional aluminium fabrication workspace home
+   FullAluDoor Dashboard â€” professional aluminium fabrication workspace home
    =========================================================================== */
 .db-home {
   display: flex;
@@ -3527,3 +3527,217 @@ h1, h2, h3, h4, p, span, a, button { overflow-wrap: break-word; word-break: norm
 [data-theme="light"] .theme-seg.gate-theme-floating button { color: #5c6470; }
 [data-theme="light"] .theme-seg.gate-theme-floating button:hover { color: #17181c; }
 
+
+/* ==========================================================================
+   FULLALUDOOR â€” 2D CAD MEMBER EDITOR
+   Individual bar selection, custom overrides and live recalculation status.
+   Palette: near-black, light gray, crimson #FF1A1A (via --accent).
+   ========================================================================== */
+
+.cad-member-hit { fill: transparent; stroke: transparent; stroke-width: 0.6; pointer-events: all; cursor: pointer; }
+.cad-member-hit:hover { fill: rgba(255, 26, 26, 0.08); stroke: var(--accent-soft); }
+.cad-member-hit.custom { stroke: var(--crimson); stroke-dasharray: 3 2; }
+.cad-member-hit.selected { fill: rgba(255, 26, 26, 0.16); stroke: var(--crimson); stroke-width: 1.1; stroke-dasharray: none; }
+
+.cad-member-editor { border: 1px solid var(--edge); border-radius: 8px; padding: 10px; background: var(--input-bg); }
+.cad-member-editor h3 { margin: 0 0 8px; }
+.cad-member-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.cad-member-head strong { font-size: 13px; font-weight: 800; color: var(--ink); }
+.cad-mode-badge { font-size: 9px; font-weight: 800; letter-spacing: 0.08em; padding: 3px 7px; border-radius: 4px; border: 1px solid var(--edge); }
+.cad-mode-badge.standard { color: var(--muted); }
+.cad-mode-badge.custom { color: var(--crimson-soft); border-color: var(--crimson); background: var(--crimson-ghost); }
+.cad-member-meta { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; font-size: 10px; color: var(--muted); margin-bottom: 8px; }
+.cad-member-meta span:first-child { font-weight: 800; letter-spacing: 0.06em; }
+.cad-member-meta code, .cad-member-meta .mono { color: var(--ink); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.cad-mode-toggle { display: flex; gap: 4px; margin-bottom: 8px; }
+.cad-mode-toggle button { flex: 1; height: 28px; border: 1px solid var(--edge); border-radius: 6px; background: transparent; color: var(--muted); font-size: 9.5px; font-weight: 800; letter-spacing: 0.05em; cursor: pointer; }
+.cad-mode-toggle button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cad-edit-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px; }
+.cad-edit-fields .input { height: 30px; font-size: 11px; padding: 0 8px; }
+.cad-edit-fields .cad-field span { font-size: 8.5px; }
+.cad-edit-actions { display: flex; gap: 5px; margin-bottom: 6px; }
+.cad-edit-actions .cad-action-btn { flex: 1; justify-content: center; height: 28px; }
+.cad-edit-actions .cad-action-btn:disabled { opacity: 0.4; cursor: default; }
+.cad-edit-error, .cad-edit-review { display: flex; align-items: flex-start; gap: 5px; font-size: 10px; line-height: 1.4; padding: 6px 7px; border-radius: 6px; margin-bottom: 6px; }
+.cad-edit-error { color: var(--crimson-soft); border: 1px solid var(--crimson); background: var(--crimson-ghost); }
+.cad-edit-review { color: var(--muted); border: 1px solid var(--edge-strong); background: var(--panel); }
+.cad-custom-warning { font-size: 9px; font-weight: 800; letter-spacing: 0.06em; color: var(--crimson-soft); border: 1px dashed var(--crimson); border-radius: 6px; padding: 5px 7px; margin-bottom: 6px; }
+.cad-section-preview { display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--edge); border-radius: 6px; padding: 7px; margin-bottom: 6px; background: var(--panel); }
+.cad-section-title { font-size: 8.5px; font-weight: 800; letter-spacing: 0.08em; color: var(--muted); }
+.cad-section-preview svg { width: 100%; height: 78px; background: #fff; border: 1px solid var(--edge); border-radius: 4px; }
+.cad-section-poly { fill: #eef1f5; stroke: #0b0b0b; stroke-width: 0.9; }
+.cad-section-poly.generic { fill: none; stroke: var(--crimson); stroke-dasharray: 3 2; }
+.cad-section-note { font-size: 9px; color: var(--muted); }
+.cad-recalc { font-size: 9.5px; font-weight: 700; letter-spacing: 0.03em; padding: 6px 7px; border-radius: 6px; border: 1px solid var(--edge); color: var(--muted); }
+.cad-recalc.recalculating { color: var(--accent-strong); border-color: var(--accent); }
+.cad-recalc.review { color: var(--crimson-soft); border-color: var(--crimson); background: var(--crimson-ghost); }
+.cad-recalc.uptodate { color: var(--green); border-color: var(--green); }
+
+.cad-member-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.cad-member-row { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 0 6px; text-align: left; padding: 5px 7px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink); cursor: pointer; }
+.cad-member-row:hover { background: var(--table-hover, rgba(255,255,255,0.04)); border-color: var(--edge); }
+.cad-member-row.active { border-color: var(--accent); background: var(--crimson-ghost); }
+.cad-member-name { font-size: 11px; font-weight: 700; }
+.cad-member-profile { grid-row: 2; font-size: 9px; color: var(--muted); }
+.cad-member-status { grid-row: 1 / span 2; align-self: center; font-size: 8.5px; font-weight: 800; letter-spacing: 0.05em; color: var(--muted); }
+.cad-member-status.custom { color: var(--crimson-soft); }
+.cad-member-count { margin-top: 6px; font-size: 9.5px; font-weight: 700; color: var(--crimson-soft); }
+.cad-empty { font-size: 10px; color: var(--muted); margin: 0; line-height: 1.45; }
+
+.audit-custom-badge { margin-left: 10px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; color: var(--crimson-soft); border: 1px solid var(--crimson); background: var(--crimson-ghost); border-radius: 5px; padding: 4px 8px; white-space: nowrap; }
+.bar-custom-tag { display: inline-block; margin-top: 4px; font-size: 9px; font-weight: 800; letter-spacing: 0.05em; color: var(--crimson-soft); border: 1px dashed var(--crimson); border-radius: 4px; padding: 2px 6px; }
+
+/* ==========================================================================
+   FULLALUDOOR â€” DEDICATED 2D CAD MEMBER DETAIL WORKSPACE
+   Technical member drawing, dimensions, section, cut info and live impact.
+   Palette: near-black, crisp white lines, crimson selection (#FF1A1A).
+   ========================================================================== */
+
+.cad-action-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.cad-member-summary { border: 1px solid var(--edge); border-radius: 8px; padding: 10px; background: var(--input-bg); }
+.cad-summary-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; font-size: 10px; color: var(--muted); margin: 6px 0 8px; }
+.cad-summary-grid b { color: var(--ink); font-weight: 700; }
+.cad-open-detail { width: 100%; justify-content: center; }
+
+.mdd-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.mdd-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--edge); background: var(--panel-bg); flex-wrap: wrap; }
+.mdd-header-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mdd-eyebrow { font-size: 9px; font-weight: 800; letter-spacing: 0.14em; color: var(--accent-strong); text-transform: uppercase; }
+.mdd-header-title h2 { margin: 0; font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+.mdd-header-id { font-size: 11px; font-weight: 700; color: var(--muted); }
+.mdd-header-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mdd-mode-badge { font-size: 9px; font-weight: 800; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--edge); }
+.mdd-mode-badge.standard { color: var(--muted); }
+.mdd-mode-badge.custom { color: var(--crimson-soft); border-color: var(--crimson); background: var(--crimson-ghost); }
+
+.mdd-body { flex: 1; min-height: 0; display: flex; }
+.mdd-list { width: 252px; flex-shrink: 0; border-right: 1px solid var(--edge); background: var(--panel-bg); overflow-y: auto; padding: 8px; }
+.mdd-list-head { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: var(--muted); padding: 4px 6px 8px; text-transform: uppercase; }
+.mdd-list-count { margin-left: auto; color: var(--ink); font-family: 'JetBrains Mono', monospace; }
+.mdd-group { margin-bottom: 8px; }
+.mdd-group-title { font-size: 9px; font-weight: 800; letter-spacing: 0.1em; color: var(--accent-strong); padding: 4px 6px; border-bottom: 1px solid var(--edge); margin-bottom: 2px; }
+.mdd-member-row { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 5px 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink); cursor: pointer; }
+.mdd-member-row:hover { background: var(--table-hover, rgba(255,255,255,0.04)); border-color: var(--edge); }
+.mdd-member-row.active { border-color: var(--accent); background: var(--crimson-ghost); }
+.mdd-member-status { font-size: 10px; font-weight: 800; color: var(--muted); text-align: center; }
+.mdd-member-status.custom { color: var(--crimson-soft); }
+.mdd-member-name { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mdd-member-len { font-size: 9.5px; color: var(--muted); }
+.mdd-member-tag { grid-column: 2 / span 2; font-size: 8px; font-weight: 800; letter-spacing: 0.06em; color: var(--crimson-soft); }
+
+.mdd-detail { flex: 1; min-width: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.mdd-empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; }
+.mdd-empty-state h3 { margin: 0; color: var(--ink); font-size: 14px; }
+.mdd-empty-state p { margin: 0; font-size: 11px; max-width: 320px; }
+
+.mdd-panel { border: 1px solid var(--edge); border-radius: 8px; background: var(--panel-bg); overflow: hidden; }
+.mdd-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--edge); font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+.mdd-panel-head > span { display: inline-flex; align-items: center; gap: 6px; }
+.mdd-panel-sub { color: var(--ink); letter-spacing: 0.04em; }
+.mdd-panel-body { padding: 9px 10px; }
+
+.mdd-drawing-panel .mdd-panel-body { padding: 4px; }
+.mdd-tech-svg { width: 100%; height: auto; max-height: 46vh; display: block; background: #ffffff; }
+.mdd-bar { fill: #f4f6f9; stroke: #0b0b0b; stroke-width: 1.4; }
+.mdd-bar.custom { fill: #fff4f4; stroke: var(--crimson); }
+.mdd-hatch { stroke: #c2c8d0; stroke-width: 0.6; opacity: 0.7; }
+.mdd-center { stroke: #b42318; stroke-width: 0.8; stroke-dasharray: 10 3 2 3; }
+.mdd-ext { stroke: #5b6472; stroke-width: 0.6; }
+.mdd-dim { stroke: #0b3d91; stroke-width: 0.8; }
+.mdd-arrow { fill: #0b3d91; }
+.mdd-dim-text { fill: #0b3d91; font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; }
+.mdd-dim-text.small { font-size: 16px; }
+.mdd-cut { stroke: var(--crimson); stroke-width: 1.6; stroke-dasharray: 6 3; }
+.mdd-bar-label { fill: #0b0b0b; font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 800; letter-spacing: 0.08em; }
+.mdd-title { fill: #0b0b0b; font-family: 'JetBrains Mono', monospace; font-size: 19px; font-weight: 800; }
+.mdd-mode { fill: #5b6472; font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 800; }
+.mdd-mode.custom { fill: var(--crimson); }
+.mdd-cut-label { fill: #5b6472; font-family: 'JetBrains Mono', monospace; font-size: 16px; }
+
+.mdd-top-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; align-items: start; }
+.mdd-panels-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.mdd-info-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 10.5px; padding: 3px 0; border-bottom: 1px dotted var(--edge); }
+.mdd-info-row:last-child { border-bottom: none; }
+.mdd-info-row > span { color: var(--muted); }
+.mdd-info-row b { color: var(--ink); font-weight: 700; text-align: right; }
+.mdd-info-row b.custom { color: var(--crimson-soft); }
+.mdd-info-row b.review { color: var(--crimson-soft); }
+.mdd-subhead { font-size: 8.5px; font-weight: 800; letter-spacing: 0.1em; color: var(--accent-strong); margin: 9px 0 3px; }
+
+.mdd-mode-toggle { display: flex; gap: 4px; margin-bottom: 8px; }
+.mdd-mode-toggle button { flex: 1; height: 28px; border: 1px solid var(--edge); border-radius: 6px; background: transparent; color: var(--muted); font-size: 9.5px; font-weight: 800; letter-spacing: 0.05em; cursor: pointer; }
+.mdd-mode-toggle button.active { background: var(--edge-strong); color: var(--ink); }
+.mdd-mode-toggle button.active.custom { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mdd-custom-warning { display: flex; align-items: flex-start; gap: 6px; font-size: 10px; line-height: 1.4; color: var(--crimson-soft); border: 1px dashed var(--crimson); background: var(--crimson-ghost); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; }
+.mdd-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.mdd-field { display: flex; flex-direction: column; gap: 3px; }
+.mdd-field > span { font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); }
+.mdd-input-wrap { position: relative; display: flex; align-items: center; }
+.mdd-input-wrap .input { height: 32px; font-size: 12px; padding-right: 30px; }
+.mdd-input-wrap .input[readonly] { color: var(--muted); background: var(--panel); }
+.mdd-unit { position: absolute; right: 9px; font-size: 9px; color: var(--muted); pointer-events: none; }
+.mdd-field.not-applicable .input { color: var(--muted); }
+.mdd-error, .mdd-review { display: flex; align-items: flex-start; gap: 6px; font-size: 10px; line-height: 1.4; padding: 6px 8px; border-radius: 6px; margin-top: 8px; }
+.mdd-error { color: var(--crimson-soft); border: 1px solid var(--crimson); background: var(--crimson-ghost); }
+.mdd-review { color: var(--muted); border: 1px solid var(--edge-strong); background: var(--panel); }
+.mdd-hint { margin: 8px 0 0; font-size: 10px; color: var(--muted); line-height: 1.45; }
+
+.mdd-section-svg { width: 100%; height: 124px; background: #ffffff; border: 1px solid var(--edge); border-radius: 4px; }
+.mdd-section-poly { fill: #eef1f5; stroke: #0b0b0b; stroke-width: 1; }
+.mdd-section-poly.generic { fill: none; stroke: var(--crimson); stroke-dasharray: 4 3; }
+.mdd-section-meta { margin-top: 7px; }
+.mdd-verified { display: inline-block; margin-top: 6px; font-size: 8.5px; font-weight: 800; letter-spacing: 0.06em; color: var(--green); }
+.mdd-generic { display: inline-block; margin-top: 6px; font-size: 8.5px; font-weight: 800; letter-spacing: 0.06em; color: var(--crimson-soft); }
+
+.mdd-context-svg { width: 100%; height: clamp(260px, 34vh, 440px); background: #ffffff; border: 1px solid var(--edge); border-radius: 4px; }
+.mdd-context-frame { fill: none; stroke: #0b0b0b; stroke-width: 2; }
+.mdd-context-glass { fill: #dbe9f7; fill-opacity: 0.55; stroke: #1f4e79; stroke-width: 1; }
+.mdd-context-member { fill: transparent; stroke: #9aa3ad; stroke-width: 1.4; cursor: pointer; }
+.mdd-context-member:hover { fill: rgba(255, 26, 26, 0.08); }
+.mdd-context-member.custom { stroke: var(--crimson); stroke-dasharray: 4 2; }
+.mdd-context-member.bead { stroke: #c9ced5; stroke-width: 0.8; }
+.mdd-context-member.selected { fill: rgba(255, 26, 26, 0.18); stroke: var(--crimson); stroke-width: 2.4; stroke-dasharray: none; }
+.mdd-context-caption { margin-top: 6px; font-size: 10px; color: var(--muted); letter-spacing: 0.04em; }
+.mdd-context-caption b { color: var(--ink); }
+
+.mdd-compare { margin-bottom: 10px; }
+.mdd-compare-label { font-size: 10px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.mdd-compare-row { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 7px; margin-bottom: 3px; }
+.mdd-compare-tag { font-size: 8px; font-weight: 800; color: var(--muted); letter-spacing: 0.05em; }
+.mdd-compare-tag.custom { color: var(--crimson-soft); }
+.mdd-compare-track { height: 9px; background: var(--panel); border: 1px solid var(--edge); border-radius: 3px; overflow: hidden; }
+.mdd-compare-bar { height: 100%; background: var(--edge-strong); }
+.mdd-compare-bar.custom { background: var(--accent); }
+.mdd-compare-row .mono { font-size: 10px; color: var(--ink); }
+.mdd-compare-delta { font-size: 10px; font-weight: 800; margin-top: 2px; }
+.mdd-compare-delta.up { color: var(--accent-strong); }
+.mdd-compare-delta.down { color: var(--muted); }
+
+.mdd-impact-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 10px; }
+.mdd-impact-list li { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.mdd-impact-list li.active { color: var(--ink); }
+.mdd-impact-list li.active span { color: var(--green); font-weight: 800; }
+.mdd-impact-3d { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; font-size: 10px; line-height: 1.4; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--edge); }
+.mdd-impact-3d.updated { color: var(--green); border-color: var(--green); }
+.mdd-impact-3d.review { color: var(--crimson-soft); border-color: var(--crimson); background: var(--crimson-ghost); }
+.mdd-recalc { margin-top: 8px; font-size: 9.5px; font-weight: 700; color: var(--muted); }
+.mdd-recalc.recalculating { color: var(--accent-strong); }
+.mdd-recalc.review { color: var(--crimson-soft); }
+
+.mdd-actionbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--edge); background: var(--panel-bg); flex-wrap: wrap; }
+.mdd-action-left, .mdd-action-mid, .mdd-action-right { display: flex; align-items: center; gap: 6px; }
+.mdd-action-right { margin-left: auto; }
+.mdd-action-mid .mdd-recalc { margin-top: 0; margin-left: 6px; }
+
+@media (max-width: 1100px) {
+  .mdd-top-grid { grid-template-columns: 1fr 1fr; }
+  .mdd-panels-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  .mdd-body { flex-direction: column; }
+  .mdd-list { width: 100%; max-height: 200px; border-right: none; border-bottom: 1px solid var(--edge); }
+  .mdd-top-grid, .mdd-panels-grid { grid-template-columns: 1fr; }
+  .mdd-action-right { margin-left: 0; }
+  .mdd-actionbar { justify-content: space-between; }
+}
