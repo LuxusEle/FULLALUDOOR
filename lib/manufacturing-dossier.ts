@@ -16,7 +16,9 @@ import {
   DXF_70S_1601,
   DXF_70S_1701,
 } from './dxf-svg-paths';
-import { fabricationChecks, PROFILE_WEIGHTS } from './door-model';
+import { fabricationChecks, PROFILE_WEIGHTS, expandOpeningCuts } from './door-model';
+import { deriveFabricationMembers, type FabricationMember } from './member-model';
+import { validateFabrication, type FabricationValidation } from './fabrication-validation';
 import type { CutItem, DerivedOpening, ProjectMetadata, ProjectNestingSummary } from './types';
 
 export interface DossierProfile {
@@ -47,6 +49,8 @@ export interface ManufacturingDossier {
   revision: string;
   openings: DerivedOpening[];
   allCuts: CutItem[];
+  fabricationMembers: FabricationMember[];
+  validation: FabricationValidation;
   profiles: DossierProfile[];
   nesting: ProjectNestingSummary;
   glass: Array<DerivedOpening['glassPanels'][number] & { openingTag: string; openingQuantity: number }>;
@@ -107,7 +111,11 @@ export function buildManufacturingDossier(
   nesting: ProjectNestingSummary,
   generatedAt = new Date().toLocaleString()
 ): ManufacturingDossier {
-  const allCuts = openings.flatMap((opening) => opening.cutList);
+  const allCuts = expandOpeningCuts(openings);
+  const fabricationMembers: FabricationMember[] = openings.flatMap((opening) => {
+    const units = Math.max(1, Math.round(opening.config.quantity || 1));
+    return deriveFabricationMembers(opening.config).map((member) => ({ ...member, qty: member.qty * units }));
+  });
   const profileMap = new Map<string, DossierProfile>();
 
   for (const cut of allCuts) {
@@ -156,6 +164,7 @@ export function buildManufacturingDossier(
   })));
   const bom = buildProjectBOM(openings, nesting);
   const quote = generateCommercialQuote(project, openings, bom);
+  const validation = validateFabrication({ openings, fabricationMembers, nesting, bom });
   const totalKerfMm = nesting.resultsByProfile.reduce((sum, profile) => sum + profile.bars.reduce((barSum, bar) => barSum + bar.kerfWasteMm, 0), 0);
   const totalReusableOffcutMm = nesting.totalReusableOffcutsM * 1000;
   const totalScrapMm = nesting.totalScrapOffcutsM * 1000;
@@ -166,6 +175,8 @@ export function buildManufacturingDossier(
     revision: `${project.projectNumber || 'PROJECT'}-${project.date.replaceAll('-', '')}`,
     openings,
     allCuts,
+    fabricationMembers,
+    validation,
     profiles: [...profileMap.values()],
     nesting,
     glass,

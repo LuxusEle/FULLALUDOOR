@@ -64,7 +64,7 @@ import { nextProjectNumber } from '../lib/project-catalog';
 import { buildManufacturingDossier, type ManufacturingDossier } from '../lib/manufacturing-dossier';
 import { buildProjectBOM } from '../lib/bom-engine';
 import type { DoorConfig } from '../lib/door-model';
-import { defaultDoorConfig, deriveDoor, doorConfigSchema, fabricationChecks } from '../lib/door-model';
+import { defaultDoorConfig, deriveDoor, doorConfigSchema, expandOpeningCuts, fabricationChecks } from '../lib/door-model';
 import type { DerivedOpening, OpeningItem, ProjectMetadata, TypologyId, ProjectNestingSummary } from '../lib/types';
 import type { StoredProject, StoredProjectRef } from '../lib/project-storage';
 import { nestProjectCuts } from '../lib/nesting-engine';
@@ -554,7 +554,7 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
     [openings]
   );
 
-  const allProjectCuts = useMemo(() => derivedProjectOpenings.flatMap((d) => d.cutList), [derivedProjectOpenings]);
+  const allProjectCuts = useMemo(() => expandOpeningCuts(derivedProjectOpenings), [derivedProjectOpenings]);
 
   const projectNesting: ProjectNestingSummary = useMemo(() => nestProjectCuts(allProjectCuts), [allProjectCuts]);
 
@@ -631,6 +631,33 @@ export default function DoorDesigner({ initialProjectId }: DoorDesignerProps) {
 
   const exportCuttingPlanePdf = () => {
     if (!project) return;
+    const validation = manufacturingDossier?.validation;
+    if (validation && !validation.ok) {
+      const lines = validation.issues
+        .filter((issue) => issue.severity === 'error')
+        .slice(0, 8)
+        .map((issue) => `• ${issue.code}: ${issue.message}`)
+        .join('\n');
+      window.alert(
+        `PDF EXPORT BLOCKED — ${validation.issues.filter((i) => i.severity === 'error').length} fabrication inconsistency(ies) detected.\n\n${lines}\n\nResolve these before exporting manufacturing data.`
+      );
+      return;
+    }
+    if (validation) {
+      const summary = validation.summary;
+      const proceed = window.confirm(
+        `PDF READY\n\n` +
+          `✓ ${summary.openings} openings\n` +
+          `✓ ${summary.physicalMembers} physical members\n` +
+          `✓ ${summary.cutEntries} cut-list entries\n` +
+          `✓ ${summary.nestedPieces} nested / accounted members\n` +
+          `✓ BOM ${summary.bomReconciled ? 'reconciled' : 'NOT reconciled'}\n` +
+          `✓ Custom members: ${summary.customMembers}\n` +
+          `✓ Fabrication reviews: ${summary.reviews}\n\n` +
+          `No calculation inconsistencies detected.\n\nProceed to export?`
+      );
+      if (!proceed) return;
+    }
     logActivity('exported', 'Manufacturing dossier export started', project.projectName);
     setIsExportingPdf(true);
   };

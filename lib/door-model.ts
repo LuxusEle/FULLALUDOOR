@@ -177,6 +177,30 @@ export function applyMemberOverrides(
   return out;
 }
 
+/**
+ * Expands an opening's per-unit cut list to the project quantity so nesting,
+ * BOM and the PDF all reconcile against the same physical piece count. The
+ * cut list returned by deriveDoor() is always per single unit.
+ */
+export function expandOpeningCuts(openings: DerivedOpening[]): CutItem[] {
+  const out: CutItem[] = [];
+  for (const opening of openings) {
+    const units = Math.max(1, Math.round(opening.config.quantity || 1));
+    for (const cut of opening.cutList) {
+      if (units === 1) {
+        out.push(cut);
+      } else {
+        out.push({
+          ...cut,
+          qty: cut.qty * units,
+          totalWeightKg: Number((cut.totalWeightKg * units).toFixed(2)),
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
   frameFace: number;
   leafLeft: number;
@@ -295,6 +319,13 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
 
   // --- TYPOLOGY BRANCHES ---
   if (system === '100D-single') {
+    // Glass opening first: bead lengths are derived from the actual glass
+    // opening per orientation (horizontal beads = glass width, vertical beads =
+    // glass height). Never average the two.
+    const gw = glassX1 - glassX0;
+    const ghLower = lowerGlassY1 - lowerGlassY0;
+    const ghUpper = upperGlassY1 - upperGlassY0;
+
     cutList = [
       makeCut('F-J', '100D-3105', 'Outer frame jamb', 2, height, 'Top 45° / bottom square', 45, 90, 'Outer Frame'),
       makeCut('F-H', '100D-3105', 'Outer frame head', 1, width, '45° / 45° miter', 45, 45, 'Outer Frame'),
@@ -303,13 +334,12 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
       makeCut('R-T', '100D-201', 'Top rail', 1, clearWidth - jointGap * 2, 'Square / cleat prep', 90, 90, 'Sash / Leaf'),
       makeCut('R-M', '100D-301', 'Mid rail', 1, clearWidth - jointGap * 2, 'Square / cleat prep', 90, 90, 'Sash / Leaf'),
       makeCut('R-B', '100D-401', 'Bottom rail', 1, clearWidth - jointGap * 2, 'Square / cleat prep', 90, 90, 'Sash / Leaf'),
-      makeCut('B-U', '100D-501', 'Upper glazing bead', 4, (clearWidth + (upperGlassY1 - upperGlassY0)) / 2, 'Miter 45°', 45, 45, 'Glazing Bead'),
-      makeCut('B-L', '100D-501', 'Lower glazing bead', 4, (clearWidth + (lowerGlassY1 - lowerGlassY0)) / 2, 'Miter 45°', 45, 45, 'Glazing Bead'),
+      makeCut('B-U', '100D-501', 'Upper glazing bead (horizontal)', 2, gw, 'Miter 45°', 45, 45, 'Glazing Bead'),
+      makeCut('B-UV', '100D-501', 'Upper glazing bead (vertical)', 2, ghUpper, 'Miter 45°', 45, 45, 'Glazing Bead'),
+      makeCut('B-L', '100D-501', 'Lower glazing bead (horizontal)', 2, gw, 'Miter 45°', 45, 45, 'Glazing Bead'),
+      makeCut('B-LV', '100D-501', 'Lower glazing bead (vertical)', 2, ghLower, 'Miter 45°', 45, 45, 'Glazing Bead'),
     ];
 
-    const gw = glassX1 - glassX0;
-    const ghLower = lowerGlassY1 - lowerGlassY0;
-    const ghUpper = upperGlassY1 - upperGlassY0;
     glassPanels.push(
       { id: `${tag}-G1`, width: gw, height: ghLower, areaM2: Number(((gw * ghLower) / 1e6).toFixed(3)), thickness: 6, description: 'Lower 6mm Toughened Glass', qty: 1 },
       { id: `${tag}-G2`, width: gw, height: ghUpper, areaM2: Number(((gw * ghUpper) / 1e6).toFixed(3)), thickness: 6, description: 'Upper 6mm Toughened Glass', qty: 1 }
@@ -328,6 +358,9 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
     const meetingClearance = 6;
     const eachLeafW = (width - 2 * frameFace - 2 * clearance - meetingClearance) / 2;
     const eachRailLen = eachLeafW - leftStileFace - rightStileFace - jointGap * 2;
+    const gw = eachRailLen + 2 * glassBite;
+    const ghLower = lowerGlassY1 - lowerGlassY0;
+    const ghUpper = upperGlassY1 - upperGlassY0;
 
     cutList = [
       makeCut('F-J', '100D-3105', 'Outer frame jamb', 2, height, 'Top 45° / bottom square', 45, 90, 'Outer Frame'),
@@ -337,12 +370,11 @@ export function deriveDoor(input: DoorConfig | OpeningItem): DerivedOpening & {
       makeCut('R-T', '100D-201', 'Top rails', 2, eachRailLen, 'Square / cleat prep', 90, 90, 'Sash / Leaf'),
       makeCut('R-M', '100D-301', 'Mid rails', 2, eachRailLen, 'Square / cleat prep', 90, 90, 'Sash / Leaf'),
       makeCut('R-B', '100D-401', 'Bottom rails', 2, eachRailLen, 'Square / cleat prep', 90, 90, 'Sash / Leaf'),
-      makeCut('B-D', '100D-501', 'Glazing beads', 16, eachRailLen, '45° miter', 45, 45, 'Glazing Bead'),
+      makeCut('B-D', '100D-501', 'Glazing beads (horizontal)', 8, gw, '45° miter', 45, 45, 'Glazing Bead'),
+      makeCut('B-DVL', '100D-501', 'Glazing beads (vertical lower)', 4, ghLower, '45° miter', 45, 45, 'Glazing Bead'),
+      makeCut('B-DVU', '100D-501', 'Glazing beads (vertical upper)', 4, ghUpper, '45° miter', 45, 45, 'Glazing Bead'),
     ];
 
-    const gw = eachRailLen + 2 * glassBite;
-    const ghLower = lowerGlassY1 - lowerGlassY0;
-    const ghUpper = upperGlassY1 - upperGlassY0;
     glassPanels.push(
       { id: `${tag}-GL1`, width: gw, height: ghLower, areaM2: Number(((gw * ghLower) / 1e6).toFixed(3)), thickness: 6, description: 'Active Leaf Lower Glass', qty: 2 },
       { id: `${tag}-GU1`, width: gw, height: ghUpper, areaM2: Number(((gw * ghUpper) / 1e6).toFixed(3)), thickness: 6, description: 'Active Leaf Upper Glass', qty: 2 }

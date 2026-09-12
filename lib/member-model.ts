@@ -318,3 +318,55 @@ export function memberHasEditableChange(
 }
 
 export type { MemberSpec };
+
+/**
+ * Canonical fabrication member: the single physical bar the PDF, cut list and
+ * nesting all agree on. Derived from the member definitions + live cut item so
+ * the exporter never recalculates a length itself.
+ */
+export interface FabricationMember {
+  openingId: string;
+  openingTag: string;
+  memberId: string;
+  displayId: string;
+  name: string;
+  type: string;
+  category: MemberCategory;
+  profile: string;
+  qty: number;
+  lengthMm: number;
+  standardLengthMm: number;
+  deltaMm: number;
+  custom: boolean;
+  angleLeft: number;
+  angleRight: number;
+  endCondition: string;
+  orientation: 'horizontal' | 'vertical';
+}
+
+export function deriveFabricationMembers(opening: OpeningItem): FabricationMember[] {
+  return deriveMemberDefinitions(opening).map((definition) => {
+    const cut = resolveMemberCut(opening, definition.memberId);
+    const lengthMm = definition.current.length;
+    const standardLengthMm = definition.standard.length;
+    return {
+      openingId: opening.id,
+      openingTag: opening.tag,
+      memberId: definition.memberId,
+      displayId: definition.displayId,
+      name: definition.name,
+      type: definition.type,
+      category: definition.category,
+      profile: definition.profile,
+      qty: definition.quantity,
+      lengthMm,
+      standardLengthMm,
+      deltaMm: Number((lengthMm - standardLengthMm).toFixed(1)),
+      custom: definition.mode === 'custom',
+      angleLeft: cut?.angleLeft ?? 90,
+      angleRight: cut?.angleRight ?? 90,
+      endCondition: cut?.ends ?? 'Straight cut',
+      orientation: definition.axis,
+    };
+  });
+}
